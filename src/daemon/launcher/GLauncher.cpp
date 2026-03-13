@@ -25,8 +25,8 @@ void GLauncher::setup(const std::filesystem::path &bin_path,
     uid_t uid = sys::SessionManager::getUID();
     
     // Open File Descriptors with O_CLOEXEC to prevent leaking to other forks
-    sys::FD exec_fd(bin_path, O_PATH | O_CLOEXEC);
-    sys::FD work_fd(game_working_dir_path, O_PATH | O_CLOEXEC);
+    sys::FD exec_fd(bin_path, O_PATH);
+    sys::FD work_fd(game_working_dir_path, O_PATH);
     
     // Create the CGroup
     auto cgroup_name = cgroup_parent.getName() + "/game";
