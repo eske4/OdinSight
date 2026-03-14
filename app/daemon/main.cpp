@@ -53,6 +53,5 @@ int main() {
 
     std::cin.get(); 
 
-    // CGroup destructor triggers the "Nuclear Kill" automatically here
     return EXIT_SUCCESS;
 }
