@@ -36,3 +36,7 @@ desktop.ini
 compile_commands.json
 .cache
 CPM_modules/
+
+#doxygen
+docs/html/
+docs/latex/
