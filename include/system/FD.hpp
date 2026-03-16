@@ -55,7 +55,12 @@ namespace sys {
                 ::close(fd); // Close the old one so we don't leak
             }
 
-            fd = new_fd;     // Take ownership of the new one
+            if(new_fd >= 0 && ::fcntl(new_fd, F_GETFD) != -1){
+
+                fd = new_fd;     // Take ownership of the new one
+                return;
+            }
+            fd = -1;
         }
     
         [[nodiscard]] int release() {

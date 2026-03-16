@@ -14,6 +14,7 @@
 #include <sys/prctl.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
 #include <cstring> // For strerror
@@ -22,8 +23,14 @@ namespace Launcher {
 
 bool GLauncher::setup(const common::GameID &game_id,
                       const sys::CGroup& cgroup_parent) {
-    
-    this->stop();
+    if(!this->canLaunch()){
+        std::cout << "Game is already running, cannot setup new context.";
+        return false;
+    }
+
+    this->ctx.reset();
+    gpid = -1;
+
 
     std::optional<GameEntry> entry = findGame(game_id);
 
@@ -61,6 +68,11 @@ bool GLauncher::setup(const common::GameID &game_id,
 }
 
 void GLauncher::launch(const LContext &ctx) {
+    if(!this->canLaunch()){
+        std::cerr << "[INFO] setup() called while previous child is active; stopping old child.\n";
+        return;
+    }
+
     struct clone_args cl_args = {};
     cl_args.exit_signal = SIGCHLD;
     cl_args.flags = CLONE_INTO_CGROUP;
@@ -132,8 +144,29 @@ void GLauncher::start() {
 }
 
 void GLauncher::stop() {
+    if(this->gpid > 0){
+        ::kill(gpid, SIGKILL);
+
+        int status;
+        ::waitpid(gpid, &status, WNOHANG);
+    }
     this->gpid = -1;
     this->ctx.reset();
+}
+
+bool GLauncher::canLaunch() {
+    if (gpid <= 0) {
+        return true;
+    }
+
+    // Check if the process is still alive
+    if (::kill(gpid, 0) == -1 && errno == ESRCH) {
+        // Process is gone, reset gpid so launcher can launch again
+        gpid = -1;
+        return true;
+    }
+
+    return false;
 }
 
 const LContext* GLauncher::getSessionInfo() const {

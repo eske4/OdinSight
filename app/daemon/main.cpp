@@ -47,7 +47,6 @@ int main() {
                   << static_cast<int>(game) << std::endl;
 
         if (!launcher.setup(game, cgroup)) {
-            std::cerr << "[ERROR] Launcher setup failed. Verify binary path, working directory, and permissions." << std::endl;
             continue;
         }
 

@@ -32,6 +32,7 @@ namespace Launcher {
     
         [[nodiscard]] bool isActive() const { return ctx.has_value() && gpid != -1; }
         [[nodiscard]] bool isPrepared() const { return ctx.has_value() && gpid == -1; }
+        [[nodiscard]] bool canLaunch();
         [[nodiscard]] pid_t getGpid() const { return gpid; }
         [[nodiscard]] const LContext* getSessionInfo() const;
     
