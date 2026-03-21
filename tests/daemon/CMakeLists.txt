@@ -1,13 +1,11 @@
-add_executable(unit_tests unit_tests.cpp)
+add_executable(integration_tests integration_tests.cpp)
 
-
-
-target_link_libraries(unit_tests 
+target_link_libraries(integration_tests 
     PRIVATE 
         Catch2::Catch2WithMain
         System
 )
 
-catch_discover_tests(unit_tests
+catch_discover_tests(integration_tests
     EXTRA_ARGS -r compact
 )

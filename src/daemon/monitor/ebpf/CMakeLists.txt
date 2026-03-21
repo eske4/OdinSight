@@ -12,7 +12,7 @@ set(EBPF_SOURCES
 
 add_library(Ebpf ${EBPF_SOURCES})
 
-add_dependencies(Ebpf ebpf_targets)
+add_dependencies(Ebpf generate_ebpf_skeletons)
 
 target_include_directories(Ebpf 
     PRIVATE "${GLOBAL_INCLUDE_DIR}"

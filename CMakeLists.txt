@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.25.1)
 
+set(CPM_SOURCE_CACHE "$ENV{HOME}/.cache/CPM" CACHE PATH "CPM source cache")
+message(STATUS "CPM Source Cache set to: ${CPM_SOURCE_CACHE}")
+
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
 
@@ -12,8 +15,6 @@ project(
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/")
 
-add_compile_options(-Wall -Wextra)
-
 include(Build)
 include(Environment)
 include(CPM)
@@ -23,15 +24,10 @@ include(BPF)
 
 set(GLOBAL_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-option(BUILD_TESTING "Build the testing suite" OFF)
+option(BUILD_TESTING "Build the testing suite" ON)
 
 if(BUILD_TESTING)
-    message(STATUS "Testing is enabled")
-    CPMAddPackage(gh:catchorg/Catch2@3.13.0)
-    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-    include(CTest)
-    include("${Catch2_SOURCE_DIR}/extras/Catch.cmake")
-    enable_testing()
+    include(Tests)
     add_subdirectory(tests)
 endif()
 
