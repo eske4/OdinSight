@@ -3,15 +3,16 @@
 
 class LaunchRequestReceiver {
 private:
-    sys::FD server_fd;
-public:
-    LaunchRequestReceiver();
-    LaunchRequestReceiver(LaunchRequestReceiver &&) = delete;
-    LaunchRequestReceiver(const LaunchRequestReceiver &) = delete;
-    LaunchRequestReceiver &operator=(LaunchRequestReceiver &&) = delete;
-    LaunchRequestReceiver &operator=(const LaunchRequestReceiver &) = delete;
-    ~LaunchRequestReceiver();
+  sys::FD server_fd;
 
-    bool start();
-    common::GameID waitForGameID();
+public:
+  LaunchRequestReceiver();
+  LaunchRequestReceiver(LaunchRequestReceiver &&) = delete;
+  LaunchRequestReceiver(const LaunchRequestReceiver &) = delete;
+  LaunchRequestReceiver &operator=(LaunchRequestReceiver &&) = delete;
+  LaunchRequestReceiver &operator=(const LaunchRequestReceiver &) = delete;
+  ~LaunchRequestReceiver();
+
+  bool start();
+  common::GameID waitForGameID();
 };

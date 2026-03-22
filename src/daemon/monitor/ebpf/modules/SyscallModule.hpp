@@ -5,22 +5,21 @@
 
 class SyscallModule : public IEbpfModule {
 private:
-    struct print_test *m_skel = nullptr;
-    const char* m_name = "SyscallMonitor";
+  struct print_test *m_skel = nullptr;
+  const char *m_name = "SyscallMonitor";
 
 public:
-    SyscallModule();
-    ~SyscallModule();
+  SyscallModule();
+  ~SyscallModule();
 
-    bool open() override;
+  bool open() override;
+  bool load(int shared_rb_fd) override;
+  bool attach() override;
+  void processEvent(const common::ebpf_event *event, size_t size) override;
 
-    bool load(int shared_rb_fd) override;
+  common::bpf_module_id_t getId() const override {
+    return common::bpf_module_id_t::MODULE_LSM_SHIELD;
+  }
 
-    bool attach() override;
-
-    void processEvent(const common::ebpf_event* event, size_t size) override;
-
-    common::bpf_module_id_t getId() const override { return common::bpf_module_id_t::MODULE_LSM_SHIELD; }
-
-    const char* getName() const override { return "SyscallMonitor"; }
+  const char *getName() const override { return "SyscallMonitor"; }
 };
