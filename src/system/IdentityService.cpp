@@ -11,11 +11,11 @@
 
 // Buffer and Clamp sizes
 constexpr size_t DEFAULT_PWD_BUFFER_SIZE = 1024;
-constexpr size_t MIN_PWD_BUFFER_SIZE = 2048;
-constexpr size_t MAX_PWD_BUFFER_SIZE = 16384;
+constexpr size_t MIN_PWD_BUFFER_SIZE     = 2048;
+constexpr size_t MAX_PWD_BUFFER_SIZE     = 16384;
 
 // Identity constants
-constexpr gid_t ROOT_GID = 0;
+constexpr gid_t ROOT_GID   = 0;
 constexpr uid_t INVALID_ID = static_cast<uid_t>(-1);
 
 // Performance hints
@@ -31,13 +31,11 @@ uid_t IdentityService::getUID() {
 
   std::string line;
   if (std::getline(loginInfo, line)) {
-    uid_t loginuid = std::numeric_limits<uid_t>::max();
-    auto [ptr, err_code] =
-        std::from_chars(line.data(), line.data() + line.size(), loginuid);
+    uid_t loginuid       = std::numeric_limits<uid_t>::max();
+    auto [ptr, err_code] = std::from_chars(line.data(), line.data() + line.size(), loginuid);
 
     // CRITICAL: Use &&. Only return if parsing SUCCEEDED and is not -1.
-    if (err_code == std::errc() &&
-        loginuid != std::numeric_limits<uid_t>::max()) {
+    if (err_code == std::errc() && loginuid != std::numeric_limits<uid_t>::max()) {
       return loginuid;
     }
   }
@@ -46,9 +44,9 @@ uid_t IdentityService::getUID() {
 
 // Example of the thread-safe, robust lookup
 gid_t IdentityService::getGID(uid_t login_uid) {
-  struct passwd pwd;
+  struct passwd  pwd;
   struct passwd *result;
-  char buffer[DEFAULT_PWD_BUFFER_SIZE];
+  char           buffer[DEFAULT_PWD_BUFFER_SIZE];
 
   // getpwuid_r is reentrant and much harder to "hook" or corrupt via race
   // conditions
@@ -64,15 +62,14 @@ gid_t IdentityService::getGID(uid_t login_uid) {
 }
 
 std::vector<std::string> IdentityService::getUserEnvironment(uid_t uid) {
-  struct passwd pwd;
+  struct passwd  pwd;
   struct passwd *result;
 
   long initial_size = sysconf(_SC_GETPW_R_SIZE_MAX);
 
   // Clamp logic
-  size_t safe_size = (initial_size <= 0) ? MIN_PWD_BUFFER_SIZE
-                                         : static_cast<size_t>(initial_size);
-  safe_size = std::clamp(safe_size, MIN_PWD_BUFFER_SIZE, MAX_PWD_BUFFER_SIZE);
+  size_t safe_size = (initial_size <= 0) ? MIN_PWD_BUFFER_SIZE : static_cast<size_t>(initial_size);
+  safe_size        = std::clamp(safe_size, MIN_PWD_BUFFER_SIZE, MAX_PWD_BUFFER_SIZE);
 
   std::vector<char> buffer(safe_size);
 
@@ -109,8 +106,7 @@ std::vector<std::string> IdentityService::getUserEnvironment(uid_t uid) {
   return env;
 }
 
-void IdentityService::printEnvironment(std::vector<std::string> env,
-                                       uid_t uid) {
+void IdentityService::printEnvironment(std::vector<std::string> env, uid_t uid) {
   std::cout << "--- Synthesized Environment for UID " << uid << " ---\n";
   if (env.empty()) {
     std::cout << "[Empty or Failed to fetch]\n";

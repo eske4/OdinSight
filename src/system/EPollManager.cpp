@@ -8,7 +8,7 @@ EPollManager::~EPollManager() {
     if (binding != nullptr) {
       epoll_ctl(m_epoll_fd.get(), EPOLL_CTL_DEL, file_descriptor, nullptr);
       binding->m_manager = nullptr;
-      binding->m_active = false;
+      binding->m_active  = false;
     }
   }
 }
@@ -25,8 +25,7 @@ std::expected<EPollManager, EPollError> EPollManager::create() {
   return EPollManager(FD(file_descriptor));
 }
 
-bool EPollManager::subscribe(int file_descriptor, EPollBinding *binding,
-                             uint32_t events) {
+bool EPollManager::subscribe(int file_descriptor, EPollBinding *binding, uint32_t events) {
   if (binding == nullptr || file_descriptor < 0) {
     return false;
   }
@@ -48,7 +47,7 @@ bool EPollManager::subscribe(int file_descriptor, EPollBinding *binding,
   }
 
   struct epoll_event event{};
-  event.events = events;
+  event.events   = events;
   event.data.ptr = binding; // The kernel now holds this raw address
 
   int ret = epoll_ctl(m_epoll_fd.get(), EPOLL_CTL_ADD, file_descriptor, &event);
@@ -60,7 +59,7 @@ bool EPollManager::subscribe(int file_descriptor, EPollBinding *binding,
     return false;
   }
 
-  binding->m_active = true;
+  binding->m_active                = true;
   m_subscriptions[file_descriptor] = binding;
   return true;
 }
@@ -73,8 +72,7 @@ bool EPollManager::unsubscribe(int file_descriptor, EPollBinding *binding) {
 
   binding->m_active = false; // This "mutes" the binding for the current loop
                              //
-  if (epoll_ctl(m_epoll_fd.get(), EPOLL_CTL_DEL, file_descriptor, nullptr) ==
-      -1) {
+  if (epoll_ctl(m_epoll_fd.get(), EPOLL_CTL_DEL, file_descriptor, nullptr) == -1) {
     return false;
   }
 
@@ -84,11 +82,10 @@ bool EPollManager::unsubscribe(int file_descriptor, EPollBinding *binding) {
 
 std::expected<size_t, EPollError> EPollManager::poll(int timeout_ms) {
   struct epoll_event local_events[MAX_EVENTS]; // 64
-  size_t total_processed = 0;
+  size_t             total_processed = 0;
 
   for (int i = 0; i < MAX_RETRIES; ++i) {
-    int nfds =
-        epoll_wait(m_epoll_fd.get(), local_events, MAX_EVENTS, timeout_ms);
+    int nfds = epoll_wait(m_epoll_fd.get(), local_events, MAX_EVENTS, timeout_ms);
 
     if (nfds < 0) {
       if (errno == EINTR) {

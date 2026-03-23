@@ -12,13 +12,13 @@
 
 namespace sys = ACName::System;
 
-constexpr int POLLTIME = 10;
+constexpr int POLLTIME    = 10;
 constexpr int POLLNOTIMER = 0;
 
 class MockService {
 public:
-  sys::FD fd;
-  bool triggered = false;
+  sys::FD                            fd;
+  bool                               triggered = false;
   std::unique_ptr<sys::EPollBinding> binding;
 
   MockService() : triggered(false) {
@@ -31,7 +31,7 @@ public:
   // Standard auto-subscriber
   explicit MockService(sys::EPollManager *mgr) : MockService() {
     auto cb = [](void *ctx, uint32_t) {
-      auto *self = static_cast<MockService *>(ctx);
+      auto    *self = static_cast<MockService *>(ctx);
       uint64_t val;
       if (read(self->fd.get(), &val, sizeof(val)) > 0) {
         self->triggered = true;
@@ -62,7 +62,7 @@ TEST_CASE("[Integration] - EPollManager Lifecycle", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Basic Event Triggering", "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+  auto        manager = sys::EPollManager::create().value();
   MockService service(&manager);
 
   SECTION("No signal means no trigger") {
@@ -80,7 +80,7 @@ TEST_CASE("[Integration] - Basic Event Triggering", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Unsubscribe Logic", "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+  auto        manager = sys::EPollManager::create().value();
   MockService service(&manager);
 
   (void)service.binding->unsubscribe();
@@ -93,13 +93,13 @@ TEST_CASE("[Integration] - Unsubscribe Logic", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Re-entrancy: Nested Poll Calls", "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+  auto        manager = sys::EPollManager::create().value();
   MockService service;
 
   struct ReentryCtx {
     sys::EPollManager *mgr;
-    int fd;
-    int count = 0;
+    int                fd;
+    int                count = 0;
   } context{&manager, service.fd.get(), 0};
 
   auto reentrant_cb = [](void *ctx, uint32_t) {
@@ -118,8 +118,8 @@ TEST_CASE("[Integration] - Re-entrancy: Nested Poll Calls", "[epoll]") {
     }
   };
 
-  service.binding = std::make_unique<sys::EPollBinding>(
-      &manager, service.fd.get(), &context, reentrant_cb);
+  service.binding =
+      std::make_unique<sys::EPollBinding>(&manager, service.fd.get(), &context, reentrant_cb);
 
   (void)service.binding->subscribe(EPOLLIN);
 
@@ -128,9 +128,8 @@ TEST_CASE("[Integration] - Re-entrancy: Nested Poll Calls", "[epoll]") {
   CHECK(context.count == 1);
 }
 
-TEST_CASE("[Integration] - Mid-loop Unsubscription (The Killer Test)",
-          "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+TEST_CASE("[Integration] - Mid-loop Unsubscription (The Killer Test)", "[epoll]") {
+  auto        manager = sys::EPollManager::create().value();
   MockService serviceA;
   MockService serviceB;
 
@@ -144,14 +143,12 @@ TEST_CASE("[Integration] - Mid-loop Unsubscription (The Killer Test)",
     CHECK(data->victim->binding->unsubscribe());
   };
 
-  auto victim_cb = [](void *ctx, uint32_t) {
-    static_cast<MockService *>(ctx)->triggered = true;
-  };
+  auto victim_cb = [](void *ctx, uint32_t) { static_cast<MockService *>(ctx)->triggered = true; };
 
-  serviceA.binding = std::make_unique<sys::EPollBinding>(
-      &manager, serviceA.fd.get(), &ctx, killer_cb);
-  serviceB.binding = std::make_unique<sys::EPollBinding>(
-      &manager, serviceB.fd.get(), &ctx, victim_cb);
+  serviceA.binding =
+      std::make_unique<sys::EPollBinding>(&manager, serviceA.fd.get(), &ctx, killer_cb);
+  serviceB.binding =
+      std::make_unique<sys::EPollBinding>(&manager, serviceB.fd.get(), &ctx, victim_cb);
 
   REQUIRE(serviceA.binding->subscribe(EPOLLIN));
   REQUIRE(serviceB.binding->subscribe(EPOLLIN));
@@ -160,8 +157,7 @@ TEST_CASE("[Integration] - Mid-loop Unsubscription (The Killer Test)",
   serviceB.signal();
 
   (void)manager.poll(POLLNOTIMER);
-  CHECK(serviceB.triggered ==
-        false); // Validated by binding->m_active check in dispatch
+  CHECK(serviceB.triggered == false); // Validated by binding->m_active check in dispatch
 }
 
 TEST_CASE("[Integration] - Subscription Updates and Masks", "[epoll]") {
@@ -169,11 +165,8 @@ TEST_CASE("[Integration] - Subscription Updates and Masks", "[epoll]") {
 
   SECTION("Updating flags (EPOLLOUT to EPOLLIN)") {
     MockService service;
-    auto cb = [](void *ctx, uint32_t) {
-      static_cast<MockService *>(ctx)->triggered = true;
-    };
-    service.binding = std::make_unique<sys::EPollBinding>(
-        &manager, service.fd.get(), &service, cb);
+    auto        cb = [](void *ctx, uint32_t) { static_cast<MockService *>(ctx)->triggered = true; };
+    service.binding = std::make_unique<sys::EPollBinding>(&manager, service.fd.get(), &service, cb);
 
     // Start with OUT (triggered immediately)
     (void)service.binding->subscribe(EPOLLOUT);
@@ -197,11 +190,9 @@ TEST_CASE("[Integration] - Subscription Updates and Masks", "[epoll]") {
     sys::FD local{sv[0]}, remote{sv[1]};
 
     uint32_t last_events = 0;
-    auto callback = [](void *ctx, uint32_t e) {
-      *static_cast<uint32_t *>(ctx) = e;
-    };
-    auto binding = std::make_unique<sys::EPollBinding>(&manager, local.get(),
-                                                       &last_events, callback);
+    auto     callback    = [](void *ctx, uint32_t e) { *static_cast<uint32_t *>(ctx) = e; };
+    auto     binding =
+        std::make_unique<sys::EPollBinding>(&manager, local.get(), &last_events, callback);
 
     (void)binding->subscribe(EPOLLIN | EPOLLOUT);
 
@@ -216,17 +207,16 @@ TEST_CASE("[Integration] - Subscription Updates and Masks", "[epoll]") {
 
 TEST_CASE("[Integration] - Error handling: EPOLLHUP", "[epoll]") {
   auto manager = sys::EPollManager::create().value();
-  int sv[2];
+  int  sv[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
   sys::FD local{sv[0]}, remote{sv[1]};
 
   bool hup_detected = false;
-  auto cb = [](void *ctx, uint32_t e) {
+  auto cb           = [](void *ctx, uint32_t e) {
     if (e & (EPOLLHUP | EPOLLRDHUP))
       *static_cast<bool *>(ctx) = true;
   };
-  auto binding = std::make_unique<sys::EPollBinding>(&manager, local.get(),
-                                                     &hup_detected, cb);
+  auto binding = std::make_unique<sys::EPollBinding>(&manager, local.get(), &hup_detected, cb);
 
   (void)binding->subscribe(EPOLLIN | EPOLLRDHUP);
   remote.reset(-1); // Close the other end
@@ -236,8 +226,8 @@ TEST_CASE("[Integration] - Error handling: EPOLLHUP", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Stress: Many FDs", "[epoll][stress]") {
-  auto manager = sys::EPollManager::create().value();
-  constexpr int COUNT = 1000;
+  auto                                      manager = sys::EPollManager::create().value();
+  constexpr int                             COUNT   = 1000;
   std::vector<std::unique_ptr<MockService>> services;
 
   for (int i = 0; i < COUNT; ++i) {
@@ -270,9 +260,7 @@ TEST_CASE("[Integration] - System Interrupt Resilience", "[epoll]") {
   (void)manager.poll(50);
   auto end = std::chrono::steady_clock::now();
 
-  auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-          .count();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
   CHECK(duration >= 45);
 
   sigaction(SIGALRM, &old_sa, nullptr);
@@ -306,14 +294,13 @@ TEST_CASE("[Integration] - Multiple Managers Isolation", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Handling Invalid FDs", "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+  auto manager  = sys::EPollManager::create().value();
   auto callback = [](void *, uint32_t) {};
-  int bad_fd = 9999; // Highly unlikely to be open
+  int  bad_fd   = 9999; // Highly unlikely to be open
 
   SECTION("Subscribing a closed FD fails gracefully") {
     // Create a binding with a garbage FD
-    auto binding = std::make_unique<sys::EPollBinding>(&manager, bad_fd,
-                                                       nullptr, callback);
+    auto binding = std::make_unique<sys::EPollBinding>(&manager, bad_fd, nullptr, callback);
 
     // This calls manager->subscribe internally, which fails epoll_ctl(ADD)
     bool result = binding->subscribe(EPOLLIN);
@@ -324,8 +311,7 @@ TEST_CASE("[Integration] - Handling Invalid FDs", "[epoll]") {
 
   SECTION("Unsubscribing a non-existent FD") {
     // Create a binding that WAS never subscribed
-    auto binding =
-        std::make_unique<sys::EPollBinding>(&manager, 8888, nullptr, callback);
+    auto binding = std::make_unique<sys::EPollBinding>(&manager, 8888, nullptr, callback);
 
     // Calling unsubscribe on an inactive binding returns true (noop)
     // OR false depending on your implementation.
@@ -344,12 +330,11 @@ TEST_CASE("[Integration] - Edge-Triggered (EPOLLET) mechanics", "[epoll]") {
   REQUIRE(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
   sys::FD local{sv[0]}, remote{sv[1]};
 
-  int trigger_count = 0;
-  auto cb = [](void *ctx, uint32_t) { (*static_cast<int *>(ctx))++; };
+  int  trigger_count = 0;
+  auto cb            = [](void *ctx, uint32_t) { (*static_cast<int *>(ctx))++; };
 
   // Subscribe with EPOLLET
-  auto binding = std::make_unique<sys::EPollBinding>(&manager, local.get(),
-                                                     &trigger_count, cb);
+  auto binding = std::make_unique<sys::EPollBinding>(&manager, local.get(), &trigger_count, cb);
   (void)binding->subscribe(EPOLLIN | EPOLLET);
 
   // 1. Send two distinct writes
@@ -378,7 +363,7 @@ TEST_CASE("[Integration] - Edge-Triggered (EPOLLET) mechanics", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Self-Unsubscription", "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+  auto        manager = sys::EPollManager::create().value();
   MockService service;
 
   // Capture the manager pointer directly in the lambda
@@ -392,7 +377,7 @@ TEST_CASE("[Integration] - Self-Unsubscription", "[epoll]") {
   // Better yet, use a struct to hold both for the test context
   struct SelfDestructCtx {
     sys::EPollManager *mgr;
-    MockService *service;
+    MockService       *service;
   } context{&manager, &service};
 
   auto callback = [](void *c, uint32_t) {
@@ -402,8 +387,8 @@ TEST_CASE("[Integration] - Self-Unsubscription", "[epoll]") {
     ctx->service->triggered = true;
   };
 
-  service.binding = std::make_unique<sys::EPollBinding>(
-      &manager, service.fd.get(), &context, callback);
+  service.binding =
+      std::make_unique<sys::EPollBinding>(&manager, service.fd.get(), &context, callback);
 
   (void)service.binding->subscribe(EPOLLIN);
 
@@ -420,12 +405,12 @@ TEST_CASE("[Integration] - Self-Unsubscription", "[epoll]") {
 }
 
 TEST_CASE("[Integration] - Redundant Subscription", "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+  auto        manager = sys::EPollManager::create().value();
   MockService service;
-  auto callback = [](void *, uint32_t) {};
+  auto        callback = [](void *, uint32_t) {};
 
-  service.binding = std::make_unique<sys::EPollBinding>(
-      &manager, service.fd.get(), &service, callback);
+  service.binding =
+      std::make_unique<sys::EPollBinding>(&manager, service.fd.get(), &service, callback);
 
   // First time should succeed
   CHECK((service.binding->subscribe(EPOLLIN) == true));
@@ -441,9 +426,8 @@ TEST_CASE("[Integration] - Redundant Subscription", "[epoll]") {
   }
 }
 
-TEST_CASE("[Integration] - RAII: Automatic Unsubscribe on Destruction",
-          "[epoll]") {
-  auto manager = sys::EPollManager::create().value();
+TEST_CASE("[Integration] - RAII: Automatic Unsubscribe on Destruction", "[epoll]") {
+  auto manager   = sys::EPollManager::create().value();
   bool triggered = false;
 
   {

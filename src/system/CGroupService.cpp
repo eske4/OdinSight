@@ -51,14 +51,12 @@ bool CGService::writeCG(const CGroup &cgroup, const std::string &file_name,
   // Open relative to directory FD
   FD file_descriptor;
 
-  file_descriptor.reset(
-      ::openat(cgroup.get_fd().get(), file_name.c_str(), O_WRONLY | O_CLOEXEC));
+  file_descriptor.reset(::openat(cgroup.get_fd().get(), file_name.c_str(), O_WRONLY | O_CLOEXEC));
   if (file_descriptor.get() < 0) {
     return false;
   }
 
-  ssize_t bytes_written =
-      ::write(file_descriptor.get(), value.data(), value.size());
+  ssize_t bytes_written = ::write(file_descriptor.get(), value.data(), value.size());
 
   return bytes_written == static_cast<ssize_t>(value.size());
 }
@@ -80,12 +78,9 @@ bool CGService::setCpuLimit(const CGroup &cgroup, std::string_view weight) {
 bool CGService::enableSubtreeControllers(const CGroup &parent_cgroup) {
   // Enable the most common controllers for children
   // Note: '+' prefix is required in subtree_control
-  return writeCG(parent_cgroup, "cgroup.subtree_control",
-                 "+cpuset +cpu +io +memory +pids");
+  return writeCG(parent_cgroup, "cgroup.subtree_control", "+cpuset +cpu +io +memory +pids");
 }
 
-bool CGService::killProcs(const CGroup &cgroup) {
-  return writeCG(cgroup, "cgroup.kill", "1");
-}
+bool CGService::killProcs(const CGroup &cgroup) { return writeCG(cgroup, "cgroup.kill", "1"); }
 
 } // namespace ACName::System

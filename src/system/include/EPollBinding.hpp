@@ -1,66 +1,66 @@
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 #include <sys/epoll.h>
 
-// Forward declare to avoid header loops
 namespace ACName::System {
 
+// Forward declare to avoid header loops
 class EPollManager;
 
 class EPollBinding {
   friend class EPollManager;
 
 private:
+  /** --- Private Type Aliases & Constants --- **/
   static constexpr uint64_t MAGIC_CONSTANT = 0x5459524553454355;
-  using Handler = void (*)(void *context, uint32_t events);
+  using Handler                            = void (*)(void *context, uint32_t events);
 
-  uint64_t m_instance_magic = MAGIC_CONSTANT;
-  EPollManager *m_manager = nullptr; // Initialize!
-  int m_fd = -1;                     // Initialize!
-  void *m_ctx = nullptr;
-  Handler m_on_event = nullptr;
-  bool m_active = false;
-  uint32_t m_event_mask = 0;
-
-  void invalidate();
+  /** --- Members (State) --- **/
+  uint64_t      m_instance_magic = MAGIC_CONSTANT;
+  EPollManager *m_manager        = nullptr;
+  int           m_fd             = -1;
+  void         *m_ctx            = nullptr;
+  Handler       m_on_event       = nullptr;
+  uint32_t      m_event_mask     = 0;
+  bool          m_active         = false;
 
 public:
-  // Updated Constructor to actually receive the state
-  EPollBinding(EPollManager *manager, int file_descriptor, void *ctx,
-               Handler handler);
+  /** --- Lifecycle --- **/
+  EPollBinding(EPollManager *manager, int file_descriptor, void *ctx, Handler handler);
   ~EPollBinding();
 
-  // Move Constructor: MUST transfer the manager and FD
+  // Rule of Five: Move is allowed, Copy is deleted
   EPollBinding(EPollBinding &&other) noexcept;
-
-  // Disable copy
-  EPollBinding(const EPollBinding &) = delete;
-  EPollBinding &operator=(const EPollBinding &) = delete;
-
-  // Standard Move Assignment (Optional but recommended)
   EPollBinding &operator=(EPollBinding &&other) noexcept;
 
+  EPollBinding(const EPollBinding &)            = delete;
+  EPollBinding &operator=(const EPollBinding &) = delete;
+
+  /** --- Control API --- **/
   [[nodiscard]] bool subscribe(uint32_t events);
   [[nodiscard]] bool unsubscribe();
 
+  /** --- Status Queries --- **/
   [[nodiscard]] bool isValid() const noexcept {
-    return (m_instance_magic == MAGIC_CONSTANT) && (m_on_event != nullptr) &&
-           m_active;
+    return (m_instance_magic == MAGIC_CONSTANT) && (m_on_event != nullptr) && m_active;
   }
 
-  [[nodiscard]] bool isActive() const { return m_active; }
+  [[nodiscard]] bool isActive() const noexcept { return m_active; }
 
+  /** --- Dispatch Logic --- **/
   void dispatch(uint32_t incoming_events) const {
-    // We care if:
-    // 1. One of our requested bits is set
-    // 2. OR a system error bit is set (HUP/ERR/RDHUP)
-    const uint32_t critical_bits =
-        incoming_events & (m_event_mask | EPOLLERR | EPOLLHUP);
+    // Trigger if requested bits or system error bits (HUP/ERR) are set
+    const uint32_t critical_bits = incoming_events & (m_event_mask | EPOLLERR | EPOLLHUP);
 
     if (isValid() && critical_bits != 0U) {
       m_on_event(m_ctx, incoming_events);
     }
   }
+
+private:
+  /** --- Internal Helpers --- **/
+  void invalidate();
 };
+
 } // namespace ACName::System

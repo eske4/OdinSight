@@ -4,19 +4,17 @@
 namespace ACName::System {
 void EPollBinding::invalidate() {
   m_instance_magic = 0;
-  m_fd = -1;
-  m_manager = nullptr;
-  m_active = false;
-  m_on_event = nullptr;
-  m_ctx = nullptr;
-  m_event_mask = 0;
+  m_fd             = -1;
+  m_manager        = nullptr;
+  m_active         = false;
+  m_on_event       = nullptr;
+  m_ctx            = nullptr;
+  m_event_mask     = 0;
 }
 
 // Updated Constructor to actually receive the state
-EPollBinding::EPollBinding(EPollManager *manager, int file_descriptor,
-                           void *ctx, Handler handler)
-    : m_manager(manager), m_fd(file_descriptor), m_ctx(ctx),
-      m_on_event(handler) {}
+EPollBinding::EPollBinding(EPollManager *manager, int file_descriptor, void *ctx, Handler handler)
+    : m_manager(manager), m_fd(file_descriptor), m_ctx(ctx), m_on_event(handler) {}
 
 EPollBinding::~EPollBinding() {
   // ONLY unsubscribe if we actually have a manager and a valid FD
@@ -30,12 +28,12 @@ EPollBinding::~EPollBinding() {
 EPollBinding::EPollBinding(EPollBinding &&other) noexcept {
   if (this != &other) { // Safety check
     m_instance_magic = other.m_instance_magic;
-    m_manager = other.m_manager;
-    m_fd = other.m_fd;
-    m_ctx = other.m_ctx;
-    m_on_event = other.m_on_event;
-    m_active = other.m_active;
-    m_event_mask = other.m_event_mask;
+    m_manager        = other.m_manager;
+    m_fd             = other.m_fd;
+    m_ctx            = other.m_ctx;
+    m_on_event       = other.m_on_event;
+    m_active         = other.m_active;
+    m_event_mask     = other.m_event_mask;
 
     other.invalidate();
   }
@@ -50,12 +48,12 @@ EPollBinding &EPollBinding::operator=(EPollBinding &&other) noexcept {
     }
 
     m_instance_magic = other.m_instance_magic;
-    m_manager = other.m_manager;
-    m_fd = other.m_fd;
-    m_ctx = other.m_ctx;
-    m_on_event = other.m_on_event;
-    m_active = other.m_active;
-    m_event_mask = other.m_event_mask;
+    m_manager        = other.m_manager;
+    m_fd             = other.m_fd;
+    m_ctx            = other.m_ctx;
+    m_on_event       = other.m_on_event;
+    m_active         = other.m_active;
+    m_event_mask     = other.m_event_mask;
 
     other.invalidate();
   }
@@ -68,7 +66,7 @@ bool EPollBinding::unsubscribe() {
   }
 
   if (m_manager != nullptr && m_manager->unsubscribe(m_fd, this)) {
-    m_active = false;
+    m_active     = false;
     m_event_mask = 0;
     return true;
   }
@@ -82,7 +80,7 @@ bool EPollBinding::subscribe(uint32_t events) {
 
   // Assuming your manager's subscribe returns a bool
   if (m_manager != nullptr && m_manager->subscribe(m_fd, this, events)) {
-    m_active = true;
+    m_active     = true;
     m_event_mask = events;
     return true;
   }
