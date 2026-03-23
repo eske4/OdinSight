@@ -4,10 +4,6 @@
 
 namespace common {
 
-enum GameID : uint32_t {
-    None = 0,
-    AssaultCube = 1
-};
+enum class GameID : uint32_t { AssaultCube = 0, NUM_GAMES };
 
 }
-

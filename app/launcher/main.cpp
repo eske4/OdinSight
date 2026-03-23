@@ -1,50 +1,56 @@
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
+#include "common/Protocol.hpp"
+#include "system/FD.hpp"
+#include <arpa/inet.h> // for htonl
 #include <cstring>
 #include <iostream>
-#include "common/local_protocol.hpp"
-#include "system/FD.hpp"
+#include <sys/socket.h>
+#include <sys/un.h>
 
 int main() {
-    sys::FD file_descriptor;
+  sys::FD file_descriptor;
 
-    // Create the socket
-    file_descriptor.reset(::socket(AF_UNIX, SOCK_STREAM, 0));
-    if (!file_descriptor) {
-        std::cerr << "[ERROR] Failed to create socket: " << std::strerror(errno) << "\n";
-        return 0;
-    }
+  file_descriptor.reset(::socket(AF_UNIX, SOCK_STREAM, 0));
+  if (file_descriptor.get() < 0) {
+    std::cerr << "[ERROR] Failed to create socket\n";
+    return 1;
+  }
 
-    // Prepare the address
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    std::strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+  // 1. Prepare the Abstract Address
+  sockaddr_un addr{};
+  addr.sun_family = AF_UNIX;
 
-    // Attempt to connect
-    if (connect(file_descriptor.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == -1) {
-        std::cerr << "[ERROR] Could not connect to the launcher socket at '"
-                  << SOCKET_PATH << "': " << std::strerror(errno) << "\n";
-        return 0;
-    }
+  // The first byte must be \0 for abstract namespace
+  addr.sun_path[0] = '\0';
 
-    // Prepare the message
-    LaunchMessage msg;
-    msg.magic = MAGIC_VAL;
-    msg.cmd = Command::LAUNCH_GAME;
-    msg.game_id = common::GameID::AssaultCube;
+  // Copy the name starting at index 1
+  std::string path = common::COMMAND_SOCKET_PATH;
+  std::memcpy(addr.sun_path + 1, path.c_str(), path.size());
 
-    // Send the message
-    if (send(file_descriptor.get(), &msg, sizeof(msg), 0) == -1) {
-        std::cerr << "[ERROR] Failed to send message: " << std::strerror(errno) << "\n";
-        return 0;
-    }
+  // Calculate exact length: family + null byte + path string
+  socklen_t addrLen = offsetof(struct sockaddr_un, sun_path) + 1 + path.size();
 
-    std::cout << "Launch request sent successfully\n";
+  // 2. Attempt to connect
+  if (connect(file_descriptor.get(), reinterpret_cast<sockaddr *>(&addr),
+              addrLen) == -1) {
+    std::cerr << "[ERROR] Could not connect to abstract socket: "
+              << std::strerror(errno) << "\n";
+    return 1;
+  }
 
-    // Close the socket
-    file_descriptor.reset(); // properly closes FD
+  // 3. Prepare and Send Message (with Byte Order conversion)
+  common::CommandPacket msg;
+  msg.command_id = static_cast<common::DaemonCommand>(
+      htonl(static_cast<uint32_t>(common::DaemonCommand::Launch)));
+  msg.game_id = static_cast<common::GameID>(
+      htonl(static_cast<uint32_t>(common::GameID::AssaultCube)));
 
-    return 0;
+  if (send(file_descriptor.get(), &msg, sizeof(msg), 0) == -1) {
+    std::cerr << "[ERROR] Failed to send message\n";
+    return 1;
+  }
+
+  std::cout << "Launch request sent successfully to "
+            << common::COMMAND_SOCKET_PATH << "\n";
+
+  return 0;
 }
-
