@@ -22,7 +22,7 @@ int EbpfManager::handleEvent(void *ctx, void *data, size_t data_sz) {
   }
 
   const auto *event = static_cast<const ebpf_event *>(data);
-  size_t index = static_cast<size_t>(event->module_id);
+  size_t      index = static_cast<size_t>(event->module_id);
 
   if (index >= self->m_modules.size()) {
     return 0;
@@ -53,10 +53,9 @@ bool EbpfManager::start() {
     return false;
   }
 
-  m_shared_rb_fd = sys::FD(bpf_map__fd(m_shared_rb_map));
+  m_shared_rb_fd = FD(bpf_map__fd(m_shared_rb_map));
 
-  auto *ring_buffer =
-      ring_buffer__new(m_shared_rb_fd.get(), handleEvent, this, nullptr);
+  auto *ring_buffer = ring_buffer__new(m_shared_rb_fd.get(), handleEvent, this, nullptr);
   if (ring_buffer == nullptr) {
     return false; // m_isActive remains false (default from constructor)
   }
@@ -110,11 +109,10 @@ bool EbpfManager::removeModule(EbpfModuleId mod_id) {
   return true;
 }
 
-bool EbpfManager::createEPollBinding(sys::EPollManager *manager) {
+bool EbpfManager::createEPollBinding(EPollManager *manager) {
   // Safety check: don't create if no ring buffer, no initilization and already
   // have a binding
-  if (manager == nullptr || m_ringbuf_reader == nullptr ||
-      m_binding != nullptr || !m_isActive) {
+  if (manager == nullptr || m_ringbuf_reader == nullptr || m_binding != nullptr || !m_isActive) {
     return false;
   }
 
@@ -127,16 +125,14 @@ bool EbpfManager::createEPollBinding(sys::EPollManager *manager) {
     auto *self = static_cast<EbpfManager *>(ctx);
     // We only care about data being ready (EPOLLIN)
     // or the buffer being closed (ERR/HUP)
-    if (self && self->m_ringbuf_reader &&
-        (events & (EPOLLIN | EPOLLERR | EPOLLHUP))) {
+    if (self && self->m_ringbuf_reader && (events & (EPOLLIN | EPOLLERR | EPOLLHUP))) {
       // consume() is more efficient than poll() when we already
       // know data is there. It drains the buffer and calls handleEvent.
       ring_buffer__consume(self->m_ringbuf_reader.get());
     }
   };
 
-  m_binding =
-      std::make_unique<sys::EPollBinding>(manager, poll_fd, this, on_event);
+  m_binding = std::make_unique<EPollBinding>(manager, poll_fd, this, on_event);
 
   if (!m_binding->subscribe(EPOLLIN | EPOLLET)) {
 

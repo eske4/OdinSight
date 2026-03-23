@@ -25,7 +25,7 @@ namespace ACName::Daemon::Launcher {
 
 std::optional<GameEntry> findGame(const GameID &game_id) {
   const auto &whitelist = getWhitelist();
-  auto iterator = whitelist.find(game_id);
+  auto        iterator  = whitelist.find(game_id);
 
   if (iterator != whitelist.end()) {
     return iterator->second;

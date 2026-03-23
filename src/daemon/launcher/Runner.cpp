@@ -44,24 +44,22 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
   sys::FD work_fd(entry->dataDir, O_PATH);
 
   // Create the CGroup
-  auto cgroup_name = cgroup_parent.getName() + "/game";
-  sys::CGroup cgroup = sys::CGService::create(cgroup_name);
+  auto        cgroup_name = cgroup_parent.getName() + "/game";
+  sys::CGroup cgroup      = sys::CGService::create(cgroup_name);
 
   if (!exec_fd || !work_fd) {
-    std::cerr << "Launcher Error: Failed to acquire directory/binary handles."
-              << std::endl;
+    std::cerr << "Launcher Error: Failed to acquire directory/binary handles." << std::endl;
     return false;
   }
 
-  this->m_ctx.emplace(
-      Context{.cg = std::move(cgroup),
-              .executable_fd = std::move(exec_fd),
-              .working_dir_fd = std::move(work_fd),
-              .uid = uid,
-              .gid = sys::IdentityService::getGID(uid),
-              .game_name = entry->binary.filename().string(),
-              .envp = sys::IdentityService::getUserEnvironment(uid),
-              .argv = {entry->binary.string()}});
+  this->m_ctx.emplace(Context{.cg             = std::move(cgroup),
+                              .executable_fd  = std::move(exec_fd),
+                              .working_dir_fd = std::move(work_fd),
+                              .uid            = uid,
+                              .gid            = sys::IdentityService::getGID(uid),
+                              .game_name      = entry->binary.filename().string(),
+                              .envp           = sys::IdentityService::getUserEnvironment(uid),
+                              .argv           = {entry->binary.string()}});
 
   return true;
 }
@@ -74,9 +72,9 @@ void Runner::launch(const Context &ctx) {
   }
 
   struct clone_args cl_args = {};
-  cl_args.exit_signal = SIGCHLD;
-  cl_args.flags = CLONE_INTO_CGROUP;
-  cl_args.cgroup = static_cast<uint64_t>(ctx.cg.get_fd());
+  cl_args.exit_signal       = SIGCHLD;
+  cl_args.flags             = CLONE_INTO_CGROUP;
+  cl_args.cgroup            = static_cast<uint64_t>(ctx.cg.get_fd());
 
   uid_t uid = ctx.uid;
   gid_t gid = ctx.gid;
@@ -91,8 +89,8 @@ void Runner::launch(const Context &ctx) {
   long result = ::syscall(SYS_clone3, &cl_args, sizeof(cl_args));
 
   if (result == -1) {
-    std::cerr << "Kernel rejected clone3! " << std::strerror(errno)
-              << " (Code: " << errno << ")" << std::endl;
+    std::cerr << "Kernel rejected clone3! " << std::strerror(errno) << " (Code: " << errno << ")"
+              << std::endl;
     return;
   }
 
@@ -101,9 +99,7 @@ void Runner::launch(const Context &ctx) {
     ::prctl(PR_SET_PDEATHSIG, SIGKILL);
 
     // Security Lockdown
-    auto exit_err = [](LauncherStatus code) {
-      ::_exit(static_cast<int>(code));
-    };
+    auto exit_err = [](LauncherStatus code) { ::_exit(static_cast<int>(code)); };
 
     if (::setgroups(0, nullptr) < 0) {
       exit_err(LauncherStatus::SetGroupsFailed);
@@ -171,7 +167,7 @@ bool Runner::canLaunch() {
     return true;
   }
 
-  int status;
+  int   status;
   // Non-blocking check to see if the process has changed state
   pid_t result = ::waitpid(m_gpid, &status, WNOHANG);
 
@@ -191,8 +187,6 @@ bool Runner::canLaunch() {
   return false;
 }
 
-const Context *Runner::getSessionInfo() const {
-  return this->m_ctx ? &(*this->m_ctx) : nullptr;
-}
+const Context *Runner::getSessionInfo() const { return this->m_ctx ? &(*this->m_ctx) : nullptr; }
 
 } // namespace ACName::Daemon::Launcher

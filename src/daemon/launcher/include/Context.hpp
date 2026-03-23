@@ -10,14 +10,14 @@ namespace ACName::Daemon::Launcher {
 
 struct Context {
   using CGroup = ACName::System::CGroup;
-  using FD = ACName::System::FD;
+  using FD     = ACName::System::FD;
 
-  CGroup cg;
-  FD executable_fd;
-  FD working_dir_fd;
-  uid_t uid = -1;
-  gid_t gid = -1;
-  std::string game_name;
+  CGroup                   cg;
+  FD                       executable_fd;
+  FD                       working_dir_fd;
+  uid_t                    uid = -1;
+  gid_t                    gid = -1;
+  std::string              game_name;
   std::vector<std::string> envp;
   std::vector<std::string> argv;
 };
