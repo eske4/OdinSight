@@ -4,7 +4,7 @@
 #include <sys/epoll.h>
 
 // Forward declare to avoid header loops
-namespace sys {
+namespace ACName::System {
 
 class EPollManager;
 
@@ -16,8 +16,8 @@ private:
   using Handler = void (*)(void *context, uint32_t events);
 
   uint64_t m_instance_magic = MAGIC_CONSTANT;
-  sys::EPollManager *m_manager = nullptr; // Initialize!
-  int m_fd = -1;                          // Initialize!
+  EPollManager *m_manager = nullptr; // Initialize!
+  int m_fd = -1;                     // Initialize!
   void *m_ctx = nullptr;
   Handler m_on_event = nullptr;
   bool m_active = false;
@@ -27,7 +27,7 @@ private:
 
 public:
   // Updated Constructor to actually receive the state
-  EPollBinding(sys::EPollManager *manager, int file_descriptor, void *ctx,
+  EPollBinding(EPollManager *manager, int file_descriptor, void *ctx,
                Handler handler);
   ~EPollBinding();
 
@@ -63,4 +63,4 @@ public:
     }
   }
 };
-} // namespace sys
+} // namespace ACName::System

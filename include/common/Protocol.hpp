@@ -3,7 +3,7 @@
 #include "GameID.hpp"
 #include <cstdint>
 
-namespace common {
+namespace ACName::Common {
 
 enum class DaemonCommand : uint32_t { Launch = 1, NUM_COMMANDS };
 
@@ -17,4 +17,4 @@ struct CommandPacket {
 // Centralize the socket path here too, so both sides use the same string
 inline static constexpr char COMMAND_SOCKET_PATH[] = "ac_TyrSecure";
 
-} // namespace common
+} // namespace ACName::Common

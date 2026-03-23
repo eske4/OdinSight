@@ -6,12 +6,15 @@
 #include <unistd.h>
 #include <vector>
 
-namespace Launcher {
+namespace ACName::Daemon::Launcher {
 
-struct LContext {
-  sys::CGroup cg;
-  sys::FD executable_fd;
-  sys::FD working_dir_fd;
+struct Context {
+  using CGroup = ACName::System::CGroup;
+  using FD = ACName::System::FD;
+
+  CGroup cg;
+  FD executable_fd;
+  FD working_dir_fd;
   uid_t uid = -1;
   gid_t gid = -1;
   std::string game_name;
@@ -19,4 +22,4 @@ struct LContext {
   std::vector<std::string> argv;
 };
 
-} // namespace Launcher
+} // namespace ACName::Daemon::Launcher

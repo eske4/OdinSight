@@ -9,7 +9,8 @@
 #include <thread>
 #include <unistd.h>
 
-namespace sys {
+namespace ACName::System {
+
 class CGroup {
 public:
   CGroup() = default;
@@ -73,14 +74,15 @@ public:
   }
 
   // Accessors
-  [[nodiscard]] const sys::FD &get_fd() const { return this->fd; }
+  [[nodiscard]] const FD &get_fd() const { return this->fd; }
   [[nodiscard]] const std::string &getName() const { return name; }
   [[nodiscard]] uint64_t getID() const { return this->id; }
 
 private:
   std::string name;
   std::filesystem::path path = "";
-  sys::FD fd;
+  FD fd;
   uint64_t id;
 };
-} // namespace sys
+
+} // namespace ACName::System

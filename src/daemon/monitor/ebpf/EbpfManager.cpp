@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <sys/epoll.h>
 
+namespace ACName::Daemon::Monitor::Kernel {
+
 EbpfManager::EbpfManager()
     : m_ringbuf_reader(nullptr, ring_buffer__free),
       m_master_skel(nullptr, master__destroy) // or skel if using skeleton
@@ -15,12 +17,11 @@ EbpfManager::EbpfManager()
 
 int EbpfManager::handleEvent(void *ctx, void *data, size_t data_sz) {
   auto *self = static_cast<EbpfManager *>(ctx);
-  if (self == nullptr || data == nullptr ||
-      data_sz != sizeof(common::ebpf_event)) {
+  if (self == nullptr || data == nullptr || data_sz != sizeof(ebpf_event)) {
     return 0;
   }
 
-  const auto *event = static_cast<const common::ebpf_event *>(data);
+  const auto *event = static_cast<const ebpf_event *>(data);
   size_t index = static_cast<size_t>(event->module_id);
 
   if (index >= self->m_modules.size()) {
@@ -99,7 +100,7 @@ bool EbpfManager::addModule(std::unique_ptr<IEbpfModule> mod) {
   return true;
 }
 
-bool EbpfManager::removeModule(common::bpf_module_id_t mod_id) {
+bool EbpfManager::removeModule(EbpfModuleId mod_id) {
   size_t index = static_cast<size_t>(mod_id);
   if (!m_isActive || index >= m_modules.size() || !m_modules[index]) {
     return false;
@@ -145,3 +146,5 @@ bool EbpfManager::createEPollBinding(sys::EPollManager *manager) {
 
   return true;
 }
+
+} // namespace ACName::Daemon::Monitor::Kernel

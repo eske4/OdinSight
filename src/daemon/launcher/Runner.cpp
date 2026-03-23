@@ -1,5 +1,5 @@
-#include "GLauncher.hpp"
-#include "CGService.hpp"
+#include "Runner.hpp"
+#include "CGroupService.hpp"
 #include "GameWhitelist.hpp"
 #include "IdentityService.hpp"
 #include "utils/StringUtil.hpp"
@@ -18,10 +18,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace Launcher {
+namespace ACName::Daemon::Launcher {
 
-bool GLauncher::setup(const common::GameID &game_id,
-                      const sys::CGroup &cgroup_parent) {
+namespace sys = ACName::System;
+
+bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
   if (!this->canLaunch()) {
     std::cout << "Game is already running, cannot setup new context.";
     return false;
@@ -53,19 +54,19 @@ bool GLauncher::setup(const common::GameID &game_id,
   }
 
   this->m_ctx.emplace(
-      LContext{.cg = std::move(cgroup),
-               .executable_fd = std::move(exec_fd),
-               .working_dir_fd = std::move(work_fd),
-               .uid = uid,
-               .gid = sys::IdentityService::getGID(uid),
-               .game_name = entry->binary.filename().string(),
-               .envp = sys::IdentityService::getUserEnvironment(uid),
-               .argv = {entry->binary.string()}});
+      Context{.cg = std::move(cgroup),
+              .executable_fd = std::move(exec_fd),
+              .working_dir_fd = std::move(work_fd),
+              .uid = uid,
+              .gid = sys::IdentityService::getGID(uid),
+              .game_name = entry->binary.filename().string(),
+              .envp = sys::IdentityService::getUserEnvironment(uid),
+              .argv = {entry->binary.string()}});
 
   return true;
 }
 
-void GLauncher::launch(const LContext &ctx) {
+void Runner::launch(const Context &ctx) {
   if (!this->canLaunch()) {
     std::cerr << "[INFO] setup() called while previous child is active; "
                  "stopping old child.\n";
@@ -137,13 +138,13 @@ void GLauncher::launch(const LContext &ctx) {
   this->m_gpid = static_cast<pid_t>(result);
 }
 
-void GLauncher::start() {
+void Runner::start() {
   if (this->m_ctx.has_value()) {
     this->launch(*this->m_ctx);
   }
 }
 
-void GLauncher::stop() {
+void Runner::stop() {
   // 1. Kill everything in the CGroup first
   if (this->m_ctx.has_value() && this->m_ctx->cg) {
     bool res = sys::CGService::killProcs(this->m_ctx->cg);
@@ -165,7 +166,7 @@ void GLauncher::stop() {
   std::cout << "stopped game" << std::endl;
 }
 
-bool GLauncher::canLaunch() {
+bool Runner::canLaunch() {
   if (m_gpid <= 0) {
     return true;
   }
@@ -190,8 +191,8 @@ bool GLauncher::canLaunch() {
   return false;
 }
 
-const LContext *GLauncher::getSessionInfo() const {
+const Context *Runner::getSessionInfo() const {
   return this->m_ctx ? &(*this->m_ctx) : nullptr;
 }
 
-} // namespace Launcher
+} // namespace ACName::Daemon::Launcher

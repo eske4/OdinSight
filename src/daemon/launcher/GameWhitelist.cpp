@@ -1,11 +1,16 @@
 #include "GameWhitelist.hpp"
+#include "common/GameID.hpp"
 #include <unordered_map>
 
 // Using an anonymous namespace keeps this map "private" to this file.
 namespace {
-const std::unordered_map<common::GameID, GameEntry> &getWhitelist() {
-  static const std::unordered_map<common::GameID, GameEntry> whitelist = {
-      {common::GameID::AssaultCube,
+
+using ACName::Daemon::Launcher::GameEntry;
+using GameID = ACName::Common::GameID;
+
+const std::unordered_map<GameID, GameEntry> &getWhitelist() {
+  static const std::unordered_map<GameID, GameEntry> whitelist = {
+      {GameID::AssaultCube,
        {"/home/eske/Downloads/AssaultCube_v1.3.0.2_LockdownEdition_RC1/"
         "bin_unix/linux_64_client",
         "/home/eske/Downloads/AssaultCube_v1.3.0.2_LockdownEdition_RC1/"}},
@@ -13,9 +18,12 @@ const std::unordered_map<common::GameID, GameEntry> &getWhitelist() {
   };
   return whitelist;
 }
+
 } // namespace
 
-std::optional<GameEntry> findGame(const common::GameID &game_id) {
+namespace ACName::Daemon::Launcher {
+
+std::optional<GameEntry> findGame(const GameID &game_id) {
   const auto &whitelist = getWhitelist();
   auto iterator = whitelist.find(game_id);
 
@@ -24,3 +32,5 @@ std::optional<GameEntry> findGame(const common::GameID &game_id) {
   }
   return std::nullopt;
 }
+
+} // namespace ACName::Daemon::Launcher

@@ -7,13 +7,7 @@
 #include <unistd.h>
 #include <unordered_map>
 
-namespace sys {
-
-static constexpr int MAX_EVENTS = 64;
-static constexpr int MAX_RETRIES = 15;
-
-// Forward declaration!
-class EPollBinding;
+namespace ACName::System {
 
 enum class EPollError : uint8_t {
   Interrupted = 0,
@@ -22,13 +16,19 @@ enum class EPollError : uint8_t {
   InvalidFD = 3
 };
 
+// Forward declaration!
+class EPollBinding;
+
 class EPollManager {
   friend class EPollBinding;
 
 private:
-  sys::FD m_epoll_fd;
+  static constexpr int MAX_EVENTS = 64;
+  static constexpr int MAX_RETRIES = 15;
+
+  FD m_epoll_fd;
   std::unordered_map<int, EPollBinding *> m_subscriptions;
-  explicit EPollManager(sys::FD &&file_descriptor)
+  explicit EPollManager(FD &&file_descriptor)
       : m_epoll_fd(std::move(file_descriptor)) {}
 
   [[nodiscard]] bool subscribe(int file_descriptor, EPollBinding *binding,
@@ -49,4 +49,4 @@ public:
   std::expected<size_t, EPollError> poll(int timeout_ms = -1);
 };
 
-} // namespace sys
+} // namespace ACName::System

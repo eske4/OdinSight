@@ -1,6 +1,8 @@
 #include "SyscallModule.hpp"
 #include <iostream>
 
+namespace ACName::Daemon::Monitor::Kernel::Modules {
+
 SyscallModule::SyscallModule() {}
 SyscallModule::~SyscallModule() {
   if (m_skel != nullptr) {
@@ -25,8 +27,10 @@ bool SyscallModule::load(int shared_rb_fd) {
 
 bool SyscallModule::attach() { return print_test__attach(m_skel) == 0; }
 
-void SyscallModule::processEvent(const common::ebpf_event *event, size_t size) {
+void SyscallModule::processEvent(const ebpf_event *event, size_t size) {
   // Logic to handle the specific event type for this module
   std::cout << "[" << getName() << "] Event Type: " << event->event_type
             << event->timestamp << std::endl;
 }
+
+} // namespace ACName::Daemon::Monitor::Kernel::Modules

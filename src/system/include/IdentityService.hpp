@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include <vector>
 
-namespace sys {
+namespace ACName::System {
 
 class IdentityService {
 public:
@@ -16,4 +16,4 @@ public:
   static void printEnvironment(std::vector<std::string> env, uid_t uid);
 };
 
-} // namespace sys
+} // namespace ACName::System

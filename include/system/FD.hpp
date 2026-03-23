@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <utility>
 
-namespace sys {
+namespace ACName::System {
 
 class FD {
 private:
@@ -21,15 +21,10 @@ private:
     return isValid();
   }
 
-
-
 public:
   FD() noexcept = default;
-  
-  explicit FD(int file_descriptor){
 
-      this->reset(file_descriptor);
-  }
+  explicit FD(int file_descriptor) { this->reset(file_descriptor); }
 
   // Direct initialization from path
   explicit FD(const std::string &path, int flags, mode_t mode = 0) {
@@ -95,4 +90,4 @@ public:
   operator int() const { return m_fd; }
   explicit operator bool() const { return isValid(); }
 };
-} // namespace sys
+} // namespace ACName::System

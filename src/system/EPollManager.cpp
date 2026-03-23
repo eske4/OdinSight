@@ -1,7 +1,7 @@
 #include "EPollManager.hpp"
 #include "EPollBinding.hpp"
 
-namespace sys {
+namespace ACName::System {
 
 EPollManager::~EPollManager() {
   for (auto &[file_descriptor, binding] : m_subscriptions) {
@@ -22,7 +22,7 @@ std::expected<EPollManager, EPollError> EPollManager::create() {
   }
 
   // Return the object wrapped in 'expected'
-  return EPollManager(sys::FD(file_descriptor));
+  return EPollManager(FD(file_descriptor));
 }
 
 bool EPollManager::subscribe(int file_descriptor, EPollBinding *binding,
@@ -123,4 +123,4 @@ std::expected<size_t, EPollError> EPollManager::poll(int timeout_ms) {
   return total_processed;
 }
 
-} // namespace sys
+} // namespace ACName::System

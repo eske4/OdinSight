@@ -1,4 +1,4 @@
-set(LAUNCHER_SOURCES GLauncher.cpp GameWhitelist.cpp CommandListener.cpp)
+set(LAUNCHER_SOURCES Runner.cpp GameWhitelist.cpp)
 
 add_library(Launcher ${LAUNCHER_SOURCES})
 

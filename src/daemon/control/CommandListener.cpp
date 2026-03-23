@@ -1,4 +1,6 @@
 #include "CommandListener.hpp"
+#include "common/GameID.hpp"
+#include "common/Protocol.hpp"
 #include <arpa/inet.h>
 #include <chrono>
 #include <cstring>
@@ -8,6 +10,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+namespace ACName::Daemon::Control {
+
+namespace sys = ACName::System;
+namespace common = ACName::Common;
 
 CommandListener::CommandListener(std::string path, Validator validator,
                                  Handler handler)
@@ -91,44 +98,54 @@ void CommandListener::handleEvents(uint32_t events) {
     return;
   }
 
-  sys::FD clientFD;
+  m_lastAcceptTime = std::chrono::steady_clock::now();
+
+  FD clientFD;
   clientFD.reset(::accept(m_serverFD.get(), nullptr, nullptr));
   if (clientFD.get() < 0) {
     return;
   }
 
-  int smallBuf = sizeof(common::CommandPacket);
+  int smallBuf = sizeof(CommandPacket);
   ::setsockopt(clientFD.get(), SOL_SOCKET, SO_RCVBUF, &smallBuf,
                sizeof(smallBuf));
 
   processClient(clientFD);
-
-  m_lastAcceptTime = std::chrono::steady_clock::now();
 }
 
-void CommandListener::processClient(const sys::FD &file_descriptor) {
-  common::CommandPacket packet{};
+void CommandListener::processClient(const FD &file_descriptor) {
+  CommandPacket packet{};
+
+  // 1. Receive the raw data from the socket
   ssize_t bytesReceived =
       ::recv(file_descriptor.get(), &packet, sizeof(packet), MSG_DONTWAIT);
 
+  // 2. Validate that we received a full, complete packet
   if (bytesReceived == static_cast<ssize_t>(sizeof(packet))) {
+
+    // 3. Convert fields from Network to Host byte order (Big Endian -> Little
+    // Endian) We update the struct members directly so the callbacks receive
+    // "clean" data.
     uint32_t rawCmd = ::ntohl(static_cast<uint32_t>(packet.command_id));
     uint32_t rawGameId = ::ntohl(static_cast<uint32_t>(packet.game_id));
 
-    // Defensive check: Ensure the received ID actually maps to a valid GameID
-    // if you have a known range, otherwise just pass it to the validator.
-    // Step 2: Boundary check using static_cast for the enum limit
+    // 4. Boundary safety check: Ensure the received IDs are within our enum
+    // ranges
     if (rawGameId >= static_cast<uint32_t>(common::GameID::NUM_GAMES) ||
         rawCmd >= static_cast<uint32_t>(common::DaemonCommand::NUM_COMMANDS)) {
+      // Optional: Log an "Invalid Packet Data" event here
       return;
     }
 
-    auto cmd = static_cast<common::DaemonCommand>(rawCmd);
-    auto game = static_cast<common::GameID>(rawGameId);
+    // Write the converted values back into the packet
+    packet.command_id = static_cast<common::DaemonCommand>(rawCmd);
+    packet.game_id = static_cast<common::GameID>(rawGameId);
 
-    if (m_validator && m_validator(cmd, game)) {
+    // 5. Generic Validation & Execution
+    // We now pass the entire packet by reference as defined in your new header.
+    if (m_validator && m_validator(packet)) {
       if (m_handler) {
-        m_handler(cmd, game);
+        m_handler(packet);
       }
     }
   }
@@ -182,3 +199,5 @@ bool CommandListener::createEPollBinding(sys::EPollManager *manager) {
 
   return true;
 }
+
+} // namespace ACName::Daemon::Control

@@ -3,6 +3,8 @@
 #include "Ebpf.h"
 #include <bpf/libbpf.h>
 
+namespace ACName::Daemon::Monitor::Kernel {
+
 class IEbpfModule {
 public:
   virtual ~IEbpfModule() = default;
@@ -15,9 +17,11 @@ public:
 
   // 3. Attach to the kernel hooks (LSM, kprobe, tracepoint, etc.)
   virtual bool attach() = 0;
-  virtual void processEvent(const common::ebpf_event *event, size_t size) = 0;
-  virtual common::bpf_module_id_t getId() const = 0;
+  virtual void processEvent(const ebpf_event *event, size_t size) = 0;
+  virtual EbpfModuleId getId() const = 0;
 
   // Optional: Get the name for logging/debugging
   virtual const char *getName() const = 0;
 };
+
+} // namespace ACName::Daemon::Monitor::Kernel

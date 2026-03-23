@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EPollBinding.hpp"
+#include "Ebpf.h"
 #include "IEbpfModule.hpp"
 #include "master.skel.h"
 #include "system/FD.hpp"
@@ -8,11 +9,15 @@
 #include <bpf/libbpf.h>
 #include <memory>
 
+namespace ACName::Daemon::Monitor::Kernel {
+
+namespace sys = ACName::System;
+
 class EbpfManager {
 private:
   using ModuleArray =
       std::array<std::unique_ptr<IEbpfModule>,
-                 static_cast<size_t>(common::bpf_module_id_t::MODULE_COUNT)>;
+                 static_cast<size_t>(EbpfModuleId::MODULE_COUNT)>;
 
   ModuleArray m_modules;
   std::unique_ptr<struct ring_buffer, decltype(&ring_buffer__free)>
@@ -37,6 +42,8 @@ public:
 
   [[nodiscard]] bool start();
   [[nodiscard]] bool addModule(std::unique_ptr<IEbpfModule> mod);
-  [[nodiscard]] bool removeModule(common::bpf_module_id_t mod_id);
+  [[nodiscard]] bool removeModule(EbpfModuleId mod_id);
   [[nodiscard]] bool createEPollBinding(sys::EPollManager *manager);
 };
+
+} // namespace ACName::Daemon::Monitor::Kernel

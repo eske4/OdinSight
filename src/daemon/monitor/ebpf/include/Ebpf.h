@@ -3,10 +3,10 @@
 #ifdef __cplusplus
 #include <cstdint>
 #include <linux/types.h>
-namespace common {
+namespace ACName::Daemon::Monitor::Kernel {
 // We don't use extern "C" here because C++ enums/namespaces
 // aren't compatible with C anyway. We just keep the layout identical.
-enum class bpf_module_id_t : uint32_t {
+enum class EbpfModuleId : uint32_t {
   MODULE_LSM_SHIELD = 0,
   MODULE_MEM_WATCHER = 1,
   MODULE_PROC_MONITOR = 2,
@@ -15,11 +15,11 @@ enum class bpf_module_id_t : uint32_t {
 
 struct ebpf_event {
   __u64 timestamp;
-  bpf_module_id_t module_id;
+  EbpfModuleId module_id;
   __u32 event_type;
 } __attribute__((packed));
 
-} // namespace common
+} // namespace ACName::Daemon::Monitor::Kernel
 #else
 
 /* --- BPF C SIDE --- */
@@ -28,11 +28,11 @@ struct {
   __uint(max_entries, 256 * 1024);
 } rb SEC(".maps");
 
-typedef __u32 bpf_module_id_t;
+typedef __u32 EbpfModuleId;
 
 struct ebpf_event {
   __u64 timestamp;
-  bpf_module_id_t module_id;
+  EbpfModuleId module_id;
   __u32 event_type;
 } __attribute__((packed));
 

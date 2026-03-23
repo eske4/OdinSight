@@ -1,16 +1,20 @@
 #pragma once
 
-#include "LContext.hpp"
+#include "Context.hpp"
 #include "common/GameID.hpp"
+#include "system/CGroup.hpp"
 
 #include <linux/sched.h>
 #include <optional>
 #include <sys/syscall.h>
 #include <sys/types.h>
 
-namespace Launcher {
+namespace ACName::Daemon::Launcher {
 
-class GLauncher {
+class Runner {
+
+  using GameID = ACName::Common::GameID;
+  using CGroup = ACName::System::CGroup;
 
 public:
   enum class LauncherStatus : int {
@@ -29,26 +33,25 @@ private:
    * @brief The internal syscall logic (clone3/fexecve).
    * @param target_ctx The local context prepared by start().
    */
-  void launch(const LContext &ctx);
-  std::optional<LContext> m_ctx;
+  void launch(const Context &ctx);
+  std::optional<Context> m_ctx;
   pid_t m_gpid = -1;
 
 public:
-  GLauncher() = default;
-  ~GLauncher() { stop(); }
+  Runner() = default;
+  ~Runner() { stop(); }
 
-  GLauncher(const GLauncher &) = delete;
-  GLauncher &operator=(const GLauncher &) = delete;
-  GLauncher(GLauncher &&) = delete;
-  GLauncher &operator=(GLauncher &&) = delete;
+  Runner(const Runner &) = delete;
+  Runner &operator=(const Runner &) = delete;
+  Runner(Runner &&) = delete;
+  Runner &operator=(Runner &&) = delete;
 
   /**
    * @brief Prepares the environment for the launcher.
    * @param game_id: Path to the executable.
    * @param cgroup: The parents cgroup.
    */
-  [[nodiscard]] bool setup(const common::GameID &game_id,
-                           const sys::CGroup &cgroup_parent);
+  [[nodiscard]] bool setup(const GameID &game_id, const CGroup &cgroup_parent);
   void start();
   void stop();
 
@@ -60,6 +63,6 @@ public:
   }
   [[nodiscard]] bool canLaunch();
   [[nodiscard]] pid_t getGpid() const { return m_gpid; }
-  [[nodiscard]] const LContext *getSessionInfo() const;
+  [[nodiscard]] const Context *getSessionInfo() const;
 };
-} // namespace Launcher
+} // namespace ACName::Daemon::Launcher

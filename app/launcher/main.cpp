@@ -6,6 +6,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+namespace sys = ACName::System;
+namespace common = ACName::Common;
+
 int main() {
   sys::FD file_descriptor;
 
