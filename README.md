@@ -1,2 +1,2 @@
-# TyrSecureV2
-Improving previous works
+# OdinSight
+Continuation on the pre-specialization: [TyrSecure](https://github.com/eske4/TyrSecure)
