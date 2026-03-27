@@ -32,7 +32,7 @@ int main() {
 
   daemon.createEPollBinding(&epoll_manager);
 
-  std::cout << "Daemon listening on abstract socket: \\0ac_test_socket" << std::endl;
+  std::cout << "Daemon listening on abstract socket: \\0" << OdinSight::Common::COMMAND_SOCKET_PATH << std::endl;
 
   // 3. Simple Manual Epoll Loop (Since we aren't using your full EPollManager
   // yet)

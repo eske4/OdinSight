@@ -15,6 +15,6 @@ struct CommandPacket {
 #pragma pack(pop)
 
 // Centralize the socket path here too, so both sides use the same string
-inline static constexpr char COMMAND_SOCKET_PATH[] = "ac_TyrSecure";
+inline static constexpr char COMMAND_SOCKET_PATH[] = "os_hugin";
 
 } // namespace OdinSight::Common
