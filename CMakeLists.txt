@@ -30,7 +30,7 @@ add_subdirectory(ebpf)
 add_subdirectory(src)
 add_subdirectory(app)
 
-option(BUILD_TESTING "Build the testing suite" OFF)
+option(BUILD_TESTING "Build the testing suite" ON)
 
 if(BUILD_TESTING)
   include(Tests)
