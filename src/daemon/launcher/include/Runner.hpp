@@ -9,7 +9,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 
-namespace ACName::Daemon::Launcher {
+namespace OdinSight::Daemon::Launcher {
 
 class Runner {
 public:
@@ -27,8 +27,8 @@ public:
 
 private:
   /** --- Private Type Aliases --- **/
-  using GameID = ACName::Common::GameID;
-  using CGroup = ACName::System::CGroup;
+  using GameID = OdinSight::Common::GameID;
+  using CGroup = OdinSight::System::CGroup;
 
   /** --- Members (State) --- **/
   std::optional<Context> m_ctx;
@@ -67,4 +67,4 @@ private:
   void launch(const Context &ctx);
 };
 
-} // namespace ACName::Daemon::Launcher
+} // namespace OdinSight::Daemon::Launcher

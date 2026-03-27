@@ -10,20 +10,20 @@
 #include <string>
 #include <sys/epoll.h>
 
-namespace ACName::Daemon::Control {
+namespace OdinSight::Daemon::Control {
 
 class CommandListener {
 public:
   /** --- Public Type Aliases --- **/
-  using CommandPacket = ACName::Common::CommandPacket;
+  using CommandPacket = OdinSight::Common::CommandPacket;
   using Validator     = std::function<bool(const CommandPacket &packet)>;
   using Handler       = std::function<void(const CommandPacket &packet)>;
 
 private:
   /** --- Private Type Aliases --- **/
-  using FD           = ACName::System::FD;
-  using EPollManager = ACName::System::EPollManager;
-  using EPollBinding = ACName::System::EPollBinding;
+  using FD           = OdinSight::System::FD;
+  using EPollManager = OdinSight::System::EPollManager;
+  using EPollBinding = OdinSight::System::EPollBinding;
 
   /** --- Constants --- **/
   static constexpr int MAX_PENDING_CONNECTIONS = 16;
@@ -67,4 +67,4 @@ private:
   static void defaultHandler(const CommandPacket &packet) {}
 };
 
-} // namespace ACName::Daemon::Control
+} // namespace OdinSight::Daemon::Control

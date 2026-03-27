@@ -5,8 +5,8 @@
 // Using an anonymous namespace keeps this map "private" to this file.
 namespace {
 
-using ACName::Daemon::Launcher::GameEntry;
-using GameID = ACName::Common::GameID;
+using OdinSight::Daemon::Launcher::GameEntry;
+using GameID = OdinSight::Common::GameID;
 
 const std::unordered_map<GameID, GameEntry> &getWhitelist() {
   static const std::unordered_map<GameID, GameEntry> whitelist = {
@@ -21,7 +21,7 @@ const std::unordered_map<GameID, GameEntry> &getWhitelist() {
 
 } // namespace
 
-namespace ACName::Daemon::Launcher {
+namespace OdinSight::Daemon::Launcher {
 
 std::optional<GameEntry> findGame(const GameID &game_id) {
   const auto &whitelist = getWhitelist();
@@ -33,4 +33,4 @@ std::optional<GameEntry> findGame(const GameID &game_id) {
   return std::nullopt;
 }
 
-} // namespace ACName::Daemon::Launcher
+} // namespace OdinSight::Daemon::Launcher

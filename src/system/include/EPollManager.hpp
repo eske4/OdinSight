@@ -8,7 +8,7 @@
 
 #include "system/FD.hpp"
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 /** --- Error Types --- **/
 enum class EPollError : uint8_t { Interrupted = 0, SysCallFailed = 1, Timeout = 2, InvalidFD = 3 };
@@ -57,4 +57,4 @@ public:
   std::expected<size_t, EPollError> poll(int timeout_ms = -1);
 };
 
-} // namespace ACName::System
+} // namespace OdinSight::System

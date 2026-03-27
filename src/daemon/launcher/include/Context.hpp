@@ -6,11 +6,11 @@
 #include <unistd.h>
 #include <vector>
 
-namespace ACName::Daemon::Launcher {
+namespace OdinSight::Daemon::Launcher {
 
 struct Context {
-  using CGroup = ACName::System::CGroup;
-  using FD     = ACName::System::FD;
+  using CGroup = OdinSight::System::CGroup;
+  using FD     = OdinSight::System::FD;
 
   CGroup                   cg;
   FD                       executable_fd;
@@ -22,4 +22,4 @@ struct Context {
   std::vector<std::string> argv;
 };
 
-} // namespace ACName::Daemon::Launcher
+} // namespace OdinSight::Daemon::Launcher

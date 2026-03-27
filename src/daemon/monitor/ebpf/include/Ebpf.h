@@ -3,7 +3,7 @@
 #ifdef __cplusplus
 #include <cstdint>
 #include <linux/types.h>
-namespace ACName::Daemon::Monitor::Kernel {
+namespace OdinSight::Daemon::Monitor::Kernel {
 // We don't use extern "C" here because C++ enums/namespaces
 // aren't compatible with C anyway. We just keep the layout identical.
 enum class EbpfModuleId : uint32_t {
@@ -19,7 +19,7 @@ struct ebpf_event {
   __u32        event_type;
 } __attribute__((packed));
 
-} // namespace ACName::Daemon::Monitor::Kernel
+} // namespace OdinSight::Daemon::Monitor::Kernel
 #else
 
 /* --- BPF C SIDE --- */

@@ -10,14 +10,14 @@
 #include "master.skel.h"
 #include "system/FD.hpp"
 
-namespace ACName::Daemon::Monitor::Kernel {
+namespace OdinSight::Daemon::Monitor::Kernel {
 
 class EbpfManager {
 private:
   /** --- Private Type Aliases (Zero External Exposure) --- **/
-  using FD           = ACName::System::FD;
-  using EPollBinding = ACName::System::EPollBinding;
-  using EPollManager = ACName::System::EPollManager;
+  using FD           = OdinSight::System::FD;
+  using EPollBinding = OdinSight::System::EPollBinding;
+  using EPollManager = OdinSight::System::EPollManager;
 
   using ModuleArray =
       std::array<std::unique_ptr<IEbpfModule>, static_cast<size_t>(EbpfModuleId::MODULE_COUNT)>;
@@ -58,4 +58,4 @@ public:
   [[nodiscard]] bool createEPollBinding(EPollManager *manager);
 };
 
-} // namespace ACName::Daemon::Monitor::Kernel
+} // namespace OdinSight::Daemon::Monitor::Kernel

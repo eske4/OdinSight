@@ -10,7 +10,7 @@
 
 namespace fs = std::filesystem;
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 CGroup CGService::create(std::string_view name) {
   if (name.empty()) {
@@ -83,4 +83,4 @@ bool CGService::enableSubtreeControllers(const CGroup &parent_cgroup) {
 
 bool CGService::killProcs(const CGroup &cgroup) { return writeCG(cgroup, "cgroup.kill", "1"); }
 
-} // namespace ACName::System
+} // namespace OdinSight::System

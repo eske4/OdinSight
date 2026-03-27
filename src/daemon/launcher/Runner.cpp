@@ -18,9 +18,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace ACName::Daemon::Launcher {
+namespace OdinSight::Daemon::Launcher {
 
-namespace sys = ACName::System;
+namespace sys      = OdinSight::System;
+namespace CInterop = OdinSight::Util::CInterop;
 
 bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
   if (!this->canLaunch()) {
@@ -189,4 +190,4 @@ bool Runner::canLaunch() {
 
 const Context *Runner::getSessionInfo() const { return this->m_ctx ? &(*this->m_ctx) : nullptr; }
 
-} // namespace ACName::Daemon::Launcher
+} // namespace OdinSight::Daemon::Launcher

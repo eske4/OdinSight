@@ -11,10 +11,10 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-namespace ACName::Daemon::Control {
+namespace OdinSight::Daemon::Control {
 
-namespace sys    = ACName::System;
-namespace common = ACName::Common;
+namespace sys    = OdinSight::System;
+namespace common = OdinSight::Common;
 
 CommandListener::CommandListener(std::string path, Validator validator, Handler handler)
     : m_path(std::move(path)), m_validator(validator ? std::move(validator) : defaultValidator),
@@ -193,4 +193,4 @@ bool CommandListener::createEPollBinding(sys::EPollManager *manager) {
   return true;
 }
 
-} // namespace ACName::Daemon::Control
+} // namespace OdinSight::Daemon::Control

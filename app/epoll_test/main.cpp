@@ -6,12 +6,12 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-namespace KMod = ACName::Daemon::Monitor::Kernel::Modules;
-namespace Kernel = ACName::Daemon::Monitor::Kernel;
-namespace sys = ACName::System;
+namespace KMod   = OdinSight::Daemon::Monitor::Kernel::Modules;
+namespace Kernel = OdinSight::Daemon::Monitor::Kernel;
+namespace sys    = OdinSight::System;
 int main() {
 
-  auto ebpf_manager = std::make_unique<Kernel::EbpfManager>();
+  auto ebpf_manager  = std::make_unique<Kernel::EbpfManager>();
   auto epoll_manager = sys::EPollManager::create().value();
 
   if (!ebpf_manager->start()) {

@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include <vector>
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 /**
  * @class IdentityService
@@ -35,4 +35,4 @@ public:
   static void printEnvironment(const std::vector<std::string> &env, uid_t uid);
 };
 
-} // namespace ACName::System
+} // namespace OdinSight::System

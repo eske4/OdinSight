@@ -9,30 +9,29 @@
 #include <thread>
 #include <unistd.h>
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 class CGroup {
 public:
   CGroup() = default;
-  CGroup(std::string name, std::filesystem::path path, FD file_descriptor,
-         uint64_t cg_id = 0) {
+  CGroup(std::string name, std::filesystem::path path, FD file_descriptor, uint64_t cg_id = 0) {
     this->name = name;
     this->path = path;
-    this->fd = std::move(file_descriptor);
-    this->id = cg_id;
+    this->fd   = std::move(file_descriptor);
+    this->id   = cg_id;
   }
 
   // 1. & 2. Disable Copying (Prevents double-kill)
-  CGroup(const CGroup &) = delete;
+  CGroup(const CGroup &)            = delete;
   CGroup &operator=(const CGroup &) = delete;
 
   // 3. Move Constructor (Safely transfers ownership)
   CGroup(CGroup &&other) noexcept
-      : name(std::move(other.name)), path(std::move(other.path)),
-        fd(std::move(other.fd)), id(other.id) {}
+      : name(std::move(other.name)), path(std::move(other.path)), fd(std::move(other.fd)),
+        id(other.id) {}
 
   // 4. Move Assignment: DELETE (Prevents the "confusing" swap behavior)
-  CGroup &operator=(CGroup &&other) noexcept = delete;
+  CGroup  &operator=(CGroup &&other) noexcept = delete;
   explicit operator bool() const noexcept { return fd.isValid(); }
 
   // 5. Destructor
@@ -63,26 +62,24 @@ public:
         break;
       }
 
-      if (err_code.value() !=
-          static_cast<int>(std::errc::device_or_resource_busy)) {
+      if (err_code.value() != static_cast<int>(std::errc::device_or_resource_busy)) {
         break;
       }
 
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(MAX_RETRY_ATTEMPTS << i));
+      std::this_thread::sleep_for(std::chrono::milliseconds(MAX_RETRY_ATTEMPTS << i));
     }
   }
 
   // Accessors
-  [[nodiscard]] const FD &get_fd() const { return this->fd; }
+  [[nodiscard]] const FD          &get_fd() const { return this->fd; }
   [[nodiscard]] const std::string &getName() const { return name; }
-  [[nodiscard]] uint64_t getID() const { return this->id; }
+  [[nodiscard]] uint64_t           getID() const { return this->id; }
 
 private:
-  std::string name;
+  std::string           name;
   std::filesystem::path path = "";
-  FD fd;
-  uint64_t id;
+  FD                    fd;
+  uint64_t              id;
 };
 
-} // namespace ACName::System
+} // namespace OdinSight::System

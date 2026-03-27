@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
-namespace sys = ACName::System;
+namespace sys = OdinSight::System;
 
 constexpr int POLLTIME    = 10;
 constexpr int POLLNOTIMER = 0;

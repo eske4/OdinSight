@@ -21,7 +21,7 @@ constexpr uid_t INVALID_ID = static_cast<uid_t>(-1);
 // Performance hints
 constexpr size_t INITIAL_ENV_RESERVE = 12;
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 uid_t IdentityService::getUID() {
   std::ifstream loginInfo("/proc/self/loginuid");
@@ -119,4 +119,4 @@ void IdentityService::printEnvironment(const std::vector<std::string> &env, uid_
   std::cout << "------------------------------------------" << std::endl;
 }
 
-} // namespace ACName::System
+} // namespace OdinSight::System

@@ -3,7 +3,7 @@
 #include "Ebpf.h"
 #include <bpf/libbpf.h>
 
-namespace ACName::Daemon::Monitor::Kernel {
+namespace OdinSight::Daemon::Monitor::Kernel {
 
 class IEbpfModule {
 public:
@@ -24,4 +24,4 @@ public:
   virtual const char *getName() const = 0;
 };
 
-} // namespace ACName::Daemon::Monitor::Kernel
+} // namespace OdinSight::Daemon::Monitor::Kernel

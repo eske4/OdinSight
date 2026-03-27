@@ -4,9 +4,9 @@
 #include <filesystem>
 #include <optional>
 
-namespace ACName::Daemon::Launcher {
+namespace OdinSight::Daemon::Launcher {
 
-using GameID = ACName::Common::GameID;
+using GameID = OdinSight::Common::GameID;
 
 struct GameEntry {
   std::filesystem::path binary;
@@ -15,4 +15,4 @@ struct GameEntry {
 
 std::optional<GameEntry> findGame(const GameID &game_id);
 
-} // namespace ACName::Daemon::Launcher
+} // namespace OdinSight::Daemon::Launcher

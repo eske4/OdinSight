@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <utility>
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 class FD {
 private:
@@ -30,8 +30,7 @@ public:
   explicit FD(const std::string &path, int flags, mode_t mode = 0) {
     bool result = open(path.c_str(), flags, mode);
     if (!result) {
-      std::cout << "[ERROR] Failed to open file descriptor in FD object"
-                << std::endl;
+      std::cout << "[ERROR] Failed to open file descriptor in FD object" << std::endl;
     }
   }
 
@@ -49,7 +48,7 @@ public:
   }
 
   // Disable copies
-  FD(const FD &) = delete;
+  FD(const FD &)            = delete;
   FD &operator=(const FD &) = delete;
 
   ~FD() { reset(); }
@@ -84,10 +83,10 @@ public:
   }
 
   [[nodiscard]] bool isValid() const { return m_fd >= 0; }
-  [[nodiscard]] int get() const { return m_fd; }
+  [[nodiscard]] int  get() const { return m_fd; }
 
   // Operators
-  operator int() const { return m_fd; }
+           operator int() const { return m_fd; }
   explicit operator bool() const { return isValid(); }
 };
-} // namespace ACName::System
+} // namespace OdinSight::System

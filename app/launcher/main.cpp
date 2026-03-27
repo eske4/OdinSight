@@ -6,8 +6,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-namespace sys = ACName::System;
-namespace common = ACName::Common;
+namespace sys    = OdinSight::System;
+namespace common = OdinSight::Common;
 
 int main() {
   sys::FD file_descriptor;
@@ -33,10 +33,8 @@ int main() {
   socklen_t addrLen = offsetof(struct sockaddr_un, sun_path) + 1 + path.size();
 
   // 2. Attempt to connect
-  if (connect(file_descriptor.get(), reinterpret_cast<sockaddr *>(&addr),
-              addrLen) == -1) {
-    std::cerr << "[ERROR] Could not connect to abstract socket: "
-              << std::strerror(errno) << "\n";
+  if (connect(file_descriptor.get(), reinterpret_cast<sockaddr *>(&addr), addrLen) == -1) {
+    std::cerr << "[ERROR] Could not connect to abstract socket: " << std::strerror(errno) << "\n";
     return 1;
   }
 
@@ -44,16 +42,15 @@ int main() {
   common::CommandPacket msg;
   msg.command_id = static_cast<common::DaemonCommand>(
       htonl(static_cast<uint32_t>(common::DaemonCommand::Launch)));
-  msg.game_id = static_cast<common::GameID>(
-      htonl(static_cast<uint32_t>(common::GameID::AssaultCube)));
+  msg.game_id =
+      static_cast<common::GameID>(htonl(static_cast<uint32_t>(common::GameID::AssaultCube)));
 
   if (send(file_descriptor.get(), &msg, sizeof(msg), 0) == -1) {
     std::cerr << "[ERROR] Failed to send message\n";
     return 1;
   }
 
-  std::cout << "Launch request sent successfully to "
-            << common::COMMAND_SOCKET_PATH << "\n";
+  std::cout << "Launch request sent successfully to " << common::COMMAND_SOCKET_PATH << "\n";
 
   return 0;
 }

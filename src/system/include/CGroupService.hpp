@@ -4,7 +4,7 @@
 #include <string_view>
 #include <sys/types.h>
 
-namespace ACName::System {
+namespace OdinSight::System {
 
 class CGService {
 public:
@@ -25,4 +25,4 @@ public:
                                     std::string_view value);
 };
 
-} // namespace ACName::System
+} // namespace OdinSight::System

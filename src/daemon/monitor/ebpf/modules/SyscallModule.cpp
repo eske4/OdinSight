@@ -1,7 +1,7 @@
 #include "SyscallModule.hpp"
 #include <iostream>
 
-namespace ACName::Daemon::Monitor::Kernel::Modules {
+namespace OdinSight::Daemon::Monitor::Kernel::Modules {
 
 SyscallModule::SyscallModule() {}
 SyscallModule::~SyscallModule() {
@@ -29,8 +29,8 @@ bool SyscallModule::attach() { return print_test__attach(m_skel) == 0; }
 
 void SyscallModule::processEvent(const ebpf_event *event, size_t size) {
   // Logic to handle the specific event type for this module
-  std::cout << "[" << getName() << "] Event Type: " << event->event_type
-            << event->timestamp << std::endl;
+  std::cout << "[" << getName() << "] Event Type: " << event->event_type << event->timestamp
+            << std::endl;
 }
 
-} // namespace ACName::Daemon::Monitor::Kernel::Modules
+} // namespace OdinSight::Daemon::Monitor::Kernel::Modules
