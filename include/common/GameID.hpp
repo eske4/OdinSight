@@ -4,6 +4,6 @@
 
 namespace OdinSight::Common {
 
-enum class GameID : uint32_t { AssaultCube = 0, NUM_GAMES };
+enum class GameID : uint32_t { Unknown = 0, AssaultCube, NUM_GAMES };
 
 }

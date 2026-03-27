@@ -40,10 +40,8 @@ int main() {
 
   // 3. Prepare and Send Message (with Byte Order conversion)
   common::CommandPacket msg;
-  msg.command_id = static_cast<common::DaemonCommand>(
-      htonl(static_cast<uint32_t>(common::DaemonCommand::Launch)));
-  msg.game_id =
-      static_cast<common::GameID>(htonl(static_cast<uint32_t>(common::GameID::AssaultCube)));
+  msg.command_id = common::DaemonCommand::Launch;
+  msg.game_id = common::GameID::AssaultCube;
 
   if (send(file_descriptor.get(), &msg, sizeof(msg), 0) == -1) {
     std::cerr << "[ERROR] Failed to send message\n";

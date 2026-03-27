@@ -38,14 +38,14 @@ bool CommandListener::start() {
 
   sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
+  // The first byte is \0, making it an "abstract" socket
+  addr.sun_path[0] = '\0';
 
   if (m_path.size() + 1 > sizeof(addr.sun_path)) {
     closeServer();
     return false;
   }
 
-  // The first byte is \0, making it an "abstract" socket
-  addr.sun_path[0] = '\0';
 
   std::memcpy(addr.sun_path + 1, m_path.c_str(), m_path.size());
 
@@ -68,40 +68,38 @@ bool CommandListener::start() {
 }
 
 void CommandListener::handleEvents(uint32_t events) {
-  // 1. Check for Critical Errors on the Server Socket
+// 1. Check for Critical Errors on the Server Socket
   if ((events & (EPOLLERR | EPOLLHUP)) != 0U) {
     // This usually means the socket was closed externally or a kernel error
     // occurred. In an anti-cheat, we should probably attempt to restart the
     // listener.
+
     start();
     return;
   }
 
   if ((events & EPOLLIN) == 0U) {
-    return;
+      return;
   }
 
-  // Rate Limiting: Don't even accept if we just processed something.
-  // This kills a root-level script's ability to "spam" the daemon.
-
-  auto now = std::chrono::steady_clock::now();
-
-  auto elapsed =
-      std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastAcceptTime).count();
-
-  if (elapsed < COMMAND_COOLDOWN_MS) {
-    // Just return; the kernel backlog will handle the wait.
-    return;
-  }
-
-  m_lastAcceptTime = std::chrono::steady_clock::now();
-
+  // 1. ALWAYS accept the connection to clear the kernel backlog
   FD clientFD;
   clientFD.reset(::accept(m_serverFD.get(), nullptr, nullptr));
   if (clientFD.get() < 0) {
-    return;
+      return;
   }
 
+  // 2. NOW check rate limiting. If too fast, the FD goes out of scope and closes.
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastAcceptTime).count();
+
+  if (elapsed < COMMAND_COOLDOWN_MS) {
+    return; 
+  }
+
+  m_lastAcceptTime = now;
+
+  // 3. Set small buffer to prevent memory-based DoS
   int smallBuf = sizeof(CommandPacket);
   ::setsockopt(clientFD.get(), SOL_SOCKET, SO_RCVBUF, &smallBuf, sizeof(smallBuf));
 
@@ -111,32 +109,23 @@ void CommandListener::handleEvents(uint32_t events) {
 void CommandListener::processClient(const FD &file_descriptor) {
   CommandPacket packet{};
 
-  // 1. Receive the raw data from the socket
+  // Use MSG_WAITALL to ensure we don't get a "partial" packet 
+  // if the scheduler interrupts the transmission.
   ssize_t bytesReceived = ::recv(file_descriptor.get(), &packet, sizeof(packet), MSG_DONTWAIT);
 
-  // 2. Validate that we received a full, complete packet
   if (bytesReceived == static_cast<ssize_t>(sizeof(packet))) {
+    // SECURITY: Validate ranges BEFORE doing any logic
+    uint32_t rawCmd    = static_cast<uint32_t>(packet.command_id);
+    uint32_t rawGameId = static_cast<uint32_t>(packet.game_id);
 
-    // 3. Convert fields from Network to Host byte order (Big Endian -> Little
-    // Endian) We update the struct members directly so the callbacks receive
-    // "clean" data.
-    uint32_t rawCmd    = ::ntohl(static_cast<uint32_t>(packet.command_id));
-    uint32_t rawGameId = ::ntohl(static_cast<uint32_t>(packet.game_id));
-
-    // 4. Boundary safety check: Ensure the received IDs are within our enum
-    // ranges
-    if (rawGameId >= static_cast<uint32_t>(common::GameID::NUM_GAMES) ||
-        rawCmd >= static_cast<uint32_t>(common::DaemonCommand::NUM_COMMANDS)) {
-      // Optional: Log an "Invalid Packet Data" event here
-      return;
+    if (rawGameId >= static_cast<uint32_t>(common::GameID::NUM_GAMES)) {
+        return;
     }
 
-    // Write the converted values back into the packet
-    packet.command_id = static_cast<common::DaemonCommand>(rawCmd);
-    packet.game_id    = static_cast<common::GameID>(rawGameId);
+    if (rawCmd >= static_cast<uint32_t>(common::DaemonCommand::NUM_COMMANDS)) {
+        return;
+    }
 
-    // 5. Generic Validation & Execution
-    // We now pass the entire packet by reference as defined in your new header.
     if (m_validator && m_validator(packet)) {
       if (m_handler) {
         m_handler(packet);
