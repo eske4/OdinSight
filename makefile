@@ -1,7 +1,9 @@
 BUILD_DIR = build
 MAKEFLAGS += --no-print-directory
 
-.PHONY: build clean run debug
+DOXYGEN_EXISTS := $(shell command -v doxygen 2> /dev/null)
+
+.PHONY: build clean run debug docs
 
 build:
 	@mkdir -p $(BUILD_DIR)
@@ -12,7 +14,20 @@ clean:
 	@rm -rf $(BUILD_DIR)
 	@rm -rf ebpf/include/vmlinux.h
 	@rm -rf ebpf/skeletons/
+	@rm -rf docs/html
+	@rm -rf docs/latex
 	@echo "Build directory cleaned." 
+
+docs:
+ifndef DOXYGEN_EXISTS
+	@echo "Error: Doxygen is not installed."
+	@echo "Install it using: 'sudo apt install doxygen' (Ubuntu) or 'brew install doxygen' (macOS)."
+	@exit 1
+else
+	@echo "Generating OdinSight documentation..."
+	@cd docs && doxygen Doxyfile
+	@echo "Documentation generated successfully."
+endif
 
 init:
 	@sudo $(BUILD_DIR)/app/daemon/OdinSight_daemon
