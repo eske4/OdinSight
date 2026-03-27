@@ -13,12 +13,12 @@ clean:
 	@echo "Build directory cleaned." 
 
 init:
-	@sudo $(BUILD_DIR)/app/daemon/TyrSecure_daemon
+	@sudo $(BUILD_DIR)/app/daemon/OdinSight_daemon
 run:
-	@sudo $(BUILD_DIR)/app/launcher/TyrSecure_launcher
+	@sudo $(BUILD_DIR)/app/launcher/OdinSight_launcher
 
 run2:
-	@sudo $(BUILD_DIR)/app/epoll_test/TyrSecure_epoll
+	@sudo $(BUILD_DIR)/app/epoll_test/OdinSight_epoll
 	
 
 debug:
