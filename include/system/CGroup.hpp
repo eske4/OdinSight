@@ -12,7 +12,6 @@
 namespace OdinSight::System {
 
 class CGroup {
-
 private:
   std::string           name;
   std::filesystem::path path = "";
