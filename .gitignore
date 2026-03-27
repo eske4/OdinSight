@@ -45,5 +45,5 @@ docs/latex/
 /Testing/
 
 #ebpf
-/bpf/include/vmlinux.h
-/bpf/skeleton/
+/ebpf/include/vmlinux.h
+/ebpf/skeleton/
