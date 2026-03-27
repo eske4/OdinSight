@@ -21,7 +21,7 @@ clean:
 docs:
 ifndef DOXYGEN_EXISTS
 	@echo "Error: Doxygen is not installed."
-	@echo "Install it using: 'sudo apt install doxygen' (Ubuntu) or 'brew install doxygen' (macOS)."
+	@echo "Install it using: 'sudo pacman -S doxygen'"
 	@exit 1
 else
 	@echo "Generating OdinSight documentation..."
