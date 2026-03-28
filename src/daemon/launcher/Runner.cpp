@@ -9,13 +9,16 @@
 #include <cstdint>
 #include <cstring> // For strerror
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <filesystem>
+#include <sys/sendfile.h>
 #include <grp.h>
 #include <iostream>
 #include <linux/prctl.h>
 #include <linux/sched.h>
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -56,25 +59,57 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
 
   // Open File Descriptors with O_CLOEXEC to prevent leaking to other forks
   sys::FD bin_dir_fd(absBinPath.parent_path().string(), O_PATH | O_DIRECTORY);
-  sys::FD exec_fd(bin_dir_fd, absBinPath.filename().string(), O_PATH);
-
-  // Create the CGroup
-  auto        cgroup_name = cgroup_parent.getName() + "/game";
-  sys::CGroup cgroup      = sys::CGService::create(cgroup_name);
+  sys::FD exec_fd(bin_dir_fd, absBinPath.filename().string(), O_RDONLY);
 
   if (!exec_fd || !work_fd) {
     std::cerr << "Launcher Error: Failed to acquire directory/binary handles." << std::endl;
     return false;
   }
 
+// 1. Create the anonymous memfd
+sys::FD mfd(::memfd_create(SEALED_MEMFD_NAME, MFD_CLOEXEC | MFD_ALLOW_SEALING));
+if (!mfd.isValid()) {
+    std::perror("[OdinSight] memfd_create failed");
+    return false;
+}
+
+// 2. Get the size from the disk binary
+struct stat file_info;
+if (::fstat(exec_fd.get(), &file_info) < 0) {
+    std::perror("[OdinSight] fstat failed");
+    return false;
+}
+
+// We move data from disk_fd to our new mfd in RAM
+if (::sendfile(mfd.get(), exec_fd.get(), nullptr, file_info.st_size) != file_info.st_size) {
+    std::perror("[OdinSight] sendfile failed or partial copy");
+    return false;
+}
+
+// Tell the kernel we no longer need the disk version in the Page Cache
+// 0, 0 means "the whole file"
+if (int err = ::posix_fadvise(exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED); err != 0) {
+    std::cerr << "[WARN] Failed to hint kernel to clear disk cache: " 
+              << std::strerror(err) << std::endl;
+    // We don't return false here because the game can still run!
+}
+
+if (::fcntl(mfd.get(), F_ADD_SEALS, F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_WRITE | F_SEAL_SEAL) < 0) {
+    return false;
+}
+
+  // Create the CGroup
+  auto        cgroup_name = cgroup_parent.getName() + "/game";
+  sys::CGroup cgroup      = sys::CGService::create(cgroup_name);
+
   this->m_ctx.emplace(Context{.cg             = std::move(cgroup),
-                              .executable_fd  = std::move(exec_fd),
+                              .executable_fd  = std::move(mfd),
                               .working_dir_fd = std::move(work_fd),
                               .uid            = uid,
                               .gid            = sys::IdentityService::getGID(uid),
                               .game_name      = entry->binary.filename().string(),
                               .envp           = sys::IdentityService::getUserEnvironment(uid),
-                              .argv           = {entry->binary.string()}});
+                              .argv           = {absBinPath.string()}});
 
   return true;
 }
@@ -97,10 +132,7 @@ void Runner::launch(const Context &ctx, EPollManager &manager) {
   gid_t gid = ctx.gid;
 
   // Prepare argv: [game_name, bin_path, ...args]
-  std::vector<std::string> final_args = ctx.argv;
-  final_args.insert(final_args.begin(), ctx.game_name);
-
-  const std::vector<char *> argv = CInterop::toCStringVector(final_args);
+  const std::vector<char *> argv = CInterop::toCStringVector(ctx.argv);
   const std::vector<char *> envp = CInterop::toCStringVector(ctx.envp);
 
   long result = ::syscall(SYS_clone3, &cl_args, sizeof(cl_args));
@@ -210,11 +242,15 @@ void Runner::stop() {
   }
 
   // 2. Clean up the leader process tracking
-  if (this->m_gpid > 0) {
-    int status;
+  if (m_fd.isValid()) {
+    siginfo_t info{};
     // Even though cgroup.kill was sent, we still need to reap the
     // zombie of the process we personally forked.
-    ::waitpid(this->m_gpid, &status, WNOHANG);
+    if (::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG) == 0) {
+        if (info.si_pid != 0) {
+            std::clog << "[OdinSight] Game exited with status: " << info.si_status << std::endl;
+        }
+    }
   }
 
   this->m_gpid = -1;
@@ -224,23 +260,19 @@ void Runner::stop() {
 }
 
 bool Runner::canLaunch() {
-  if (m_gpid <= 0) {
+  // If the FD isn't valid, no process is being tracked.
+  if (!m_fd.isValid()) {
     return true;
   }
 
-  int   status;
-  // Non-blocking check to see if the process has changed state
-  pid_t result = ::waitpid(m_gpid, &status, WNOHANG);
+  siginfo_t info{};
+  // WNOWAIT is key here: it checks if the process is dead WITHOUT reaping it.
+  // This allows the actual stop() function to do the formal reaping later.
+  int res = ::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG | WNOWAIT);
 
-  if (result == m_gpid || (result == -1 && errno == ECHILD)) {
-    // The process is dead/reaped.
-    // IMPORTANT: Trigger stop() here to wipe the rest of the CGroup!
-    this->stop();
-    return true;
-  }
-
-  // Fallback: Check if it's still alive but not a child (shouldn't happen here)
-  if (::kill(m_gpid, 0) == -1 && errno == ESRCH) {
+  if (res == 0 && info.si_pid != 0) {
+    // The process has exited (or was killed). 
+    // Trigger stop() to clean up CGroups and FDs.
     this->stop();
     return true;
   }
