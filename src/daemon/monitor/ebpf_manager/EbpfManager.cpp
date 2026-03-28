@@ -108,10 +108,10 @@ bool EbpfManager::removeModule(EbpfModuleId mod_id) {
   return true;
 }
 
-bool EbpfManager::createEPollBinding(EPollManager *manager) {
+bool EbpfManager::createEPollBinding(EPollManager &manager) {
   // Safety check: don't create if no ring buffer, no initilization and already
   // have a binding
-  if (manager == nullptr || m_ringbuf_reader == nullptr || m_binding != nullptr || !m_isActive) {
+  if (m_ringbuf_reader == nullptr || m_binding != nullptr || !m_isActive) {
     return false;
   }
 
@@ -131,7 +131,7 @@ bool EbpfManager::createEPollBinding(EPollManager *manager) {
     }
   };
 
-  m_binding = std::make_unique<EPollBinding>(manager, poll_fd, this, on_event);
+  m_binding = std::make_unique<EPollBinding>(&manager, poll_fd, this, on_event);
 
   if (!m_binding->subscribe(EPOLLIN | EPOLLET)) {
 

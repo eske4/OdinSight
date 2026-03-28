@@ -52,7 +52,7 @@ public:
   void stop();
 
   /** --- Network / Epoll Integration --- **/
-  bool createEPollBinding(EPollManager *manager);
+  bool createEPollBinding(EPollManager &manager);
   void handleEvents(uint32_t events);
 
   [[nodiscard]] int getFd() const { return m_serverFD; }

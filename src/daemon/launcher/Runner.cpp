@@ -1,5 +1,6 @@
 #include "Runner.hpp"
 #include "CGroupService.hpp"
+#include "EPollManager.hpp"
 #include "GameWhitelist.hpp"
 #include "IdentityService.hpp"
 #include "utils/StringUtil.hpp"
@@ -8,6 +9,7 @@
 #include <cstdint>
 #include <cstring> // For strerror
 #include <fcntl.h>
+#include <filesystem>
 #include <grp.h>
 #include <iostream>
 #include <linux/prctl.h>
@@ -22,6 +24,9 @@ namespace OdinSight::Daemon::Launcher {
 
 namespace sys      = OdinSight::System;
 namespace CInterop = OdinSight::Util::CInterop;
+namespace fs = std::filesystem;
+using EPollBinding = OdinSight::System::EPollBinding;
+
 
 bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
   if (!this->canLaunch()) {
@@ -40,9 +45,19 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
 
   uid_t uid = sys::IdentityService::getUID();
 
+  fs::path absWorkPath = fs::absolute(entry->dataDir).lexically_normal();
+  fs::path absBinPath = fs::absolute(entry->binary).lexically_normal();
+  
+  if (!absWorkPath.has_filename()) {
+    absWorkPath = absWorkPath.parent_path();
+  }
+
+  sys::FD work_parent_fd(absWorkPath.parent_path().string(), O_PATH | O_DIRECTORY);
+  sys::FD work_fd(work_parent_fd, absWorkPath.filename().string(), O_PATH | O_DIRECTORY);
+
   // Open File Descriptors with O_CLOEXEC to prevent leaking to other forks
-  sys::FD exec_fd(entry->binary, O_PATH);
-  sys::FD work_fd(entry->dataDir, O_PATH);
+  sys::FD bin_dir_fd(absBinPath.parent_path().string(), O_PATH | O_DIRECTORY);
+  sys::FD exec_fd(bin_dir_fd, absBinPath.filename().string(), O_PATH);
 
   // Create the CGroup
   auto        cgroup_name = cgroup_parent.getName() + "/game";
@@ -65,16 +80,18 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
   return true;
 }
 
-void Runner::launch(const Context &ctx) {
+void Runner::launch(const Context &ctx, EPollManager &manager) {
   if (!this->canLaunch()) {
     std::cerr << "[INFO] setup() called while previous child is active; "
                  "stopping old child.\n";
     return;
   }
 
+  uint64_t pid_fd_out = 0;
   struct clone_args cl_args = {};
   cl_args.exit_signal       = SIGCHLD;
-  cl_args.flags             = CLONE_INTO_CGROUP;
+  cl_args.flags             = CLONE_INTO_CGROUP | CLONE_PIDFD;
+  cl_args.pidfd             = reinterpret_cast<uintptr_t>(&pid_fd_out);
   cl_args.cgroup            = static_cast<uint64_t>(ctx.cg.get_fd());
 
   uid_t uid = ctx.uid;
@@ -97,6 +114,7 @@ void Runner::launch(const Context &ctx) {
 
   if (result == 0) {
     // We are in the CHILD
+
     ::prctl(PR_SET_PDEATHSIG, SIGKILL);
 
     // Security Lockdown
@@ -133,16 +151,60 @@ void Runner::launch(const Context &ctx) {
   }
 
   this->m_gpid = static_cast<pid_t>(result);
+
+  if (pid_fd_out > 0) {
+        this->m_fd.reset(static_cast<int>(pid_fd_out));
+        
+        // Create the binding so stop() is called automatically on exit
+        if (!this->createEPollBinding(manager)) {
+            std::cerr << "[ERROR] Failed to bind process exit event to EPoll." << std::endl;
+        }
+    }
 }
 
-void Runner::start() {
+bool Runner::createEPollBinding(EPollManager &manager) {
+  // Safety check: don't create if no ring buffer, no initilization and already
+  // have a binding
+  if (m_binding != nullptr) {
+    return false;
+  }
+
+  if (!m_fd.isValid()) {
+    return false; // Libbpf couldn't provide a pollable file descriptor
+  }
+
+  auto on_event = [](void *ctx, uint32_t events) {
+    auto *self = static_cast<Runner *>(ctx);
+    if(self != nullptr) {
+        self->stop();
+    }
+    // We only care about data being ready (EPOLLIN)
+    // or the buffer being closed (ERR/HUP)
+    };
+
+  m_binding = std::make_unique<EPollBinding>(&manager, m_fd.get(), this, on_event);
+
+  if (!m_binding->subscribe(EPOLLIN)) {
+
+    m_binding.reset();
+    return false;
+  }
+
+  return true;
+}
+
+
+
+void Runner::start(sys::EPollManager &manager) {
   if (this->m_ctx.has_value()) {
-    this->launch(*this->m_ctx);
+    this->launch(*this->m_ctx, manager);
   }
 }
 
 void Runner::stop() {
   // 1. Kill everything in the CGroup first
+  m_binding.reset();
+
   if (this->m_ctx.has_value() && this->m_ctx->cg) {
     bool res = sys::CGService::killProcs(this->m_ctx->cg);
     if (!res) {
@@ -159,8 +221,9 @@ void Runner::stop() {
   }
 
   this->m_gpid = -1;
+  this->m_fd.reset();
   this->m_ctx.reset(); // Assuming this destroys/cleans up the CGroup
-  std::cout << "stopped game" << std::endl;
+  std::cout << "stopped game and cleaned resources" << std::endl;
 }
 
 bool Runner::canLaunch() {

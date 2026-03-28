@@ -1,5 +1,9 @@
 #include "EPollManager.hpp"
 #include "EPollBinding.hpp"
+#include <csignal>
+#include <fcntl.h>
+#include <sys/signalfd.h>
+#include <unistd.h>
 
 namespace OdinSight::System {
 
@@ -14,15 +18,39 @@ EPollManager::~EPollManager() {
 }
 
 std::expected<EPollManager, EPollError> EPollManager::create() {
-  // EPOLL_CLOEXEC: Prevents the FD from leaking to child processes.
-  int file_descriptor = epoll_create1(EPOLL_CLOEXEC);
-
-  if (file_descriptor == -1) {
+  int ep_fd = epoll_create1(EPOLL_CLOEXEC);
+  if (ep_fd == -1) {
     return std::unexpected(EPollError::SysCallFailed);
   }
 
-  // Return the object wrapped in 'expected'
-  return EPollManager(FD(file_descriptor));
+  EPollManager manager{FD(ep_fd)};
+
+  // --- INTERNAL SIGNAL SETUP ---
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+
+  // Block signals so they don't terminate the process immediately
+  sigprocmask(SIG_BLOCK, &mask, nullptr);
+
+  // Create the signalfd
+  FD sfd = FD{signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC)};
+  if (!sfd.isValid()) {
+    return std::unexpected(EPollError::SysCallFailed);
+  }
+
+  manager.m_sig_fd = std::move(sfd);
+
+  // Add it to epoll. We don't even need a 'Binding' object if we
+  // handle it specifically in the poll loop.
+  struct epoll_event event{};
+  event.events   = EPOLLIN;
+  // We explicitly set ptr to nullptr so the 'else' block in poll() is triggered
+  event.data.ptr = nullptr;
+  epoll_ctl(ep_fd, EPOLL_CTL_ADD, manager.m_sig_fd.get(), &event);
+
+  return manager;
 }
 
 bool EPollManager::subscribe(int file_descriptor, EPollBinding *binding, uint32_t events) {
@@ -106,17 +134,25 @@ std::expected<size_t, EPollError> EPollManager::poll(int timeout_ms) {
         binding->dispatch(local_events[j].events);
         total_processed++;
       }
+
+      else {
+        // If it's NOT a binding, it MUST be our internal signalfd.
+        // We deal with it right here. No extra "if" required for sockets.
+        struct signalfd_siginfo fdsi;
+        if (read(m_sig_fd.get(), &fdsi, sizeof(fdsi)) > 0) {
+          m_running = false;
+        }
+      }
     }
 
     // If we got less than 64, we've cleared the "backlog"
-    if (nfds < MAX_EVENTS) {
+    if (static_cast<size_t>(nfds) < MAX_EVENTS) {
       break;
     }
 
     // If we're looping again to drain more, don't "halt" the game anymore
     timeout_ms = 0;
   }
-
   return total_processed;
 }
 

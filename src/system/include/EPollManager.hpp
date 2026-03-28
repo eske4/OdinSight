@@ -3,7 +3,6 @@
 #include <expected>
 #include <sys/epoll.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <unordered_map>
 
 #include "system/FD.hpp"
@@ -28,7 +27,9 @@ private:
 
   /** --- Members (State) --- **/
   FD              m_epoll_fd;
+  FD              m_sig_fd;
   SubscriptionMap m_subscriptions;
+  bool            m_running{true};
 
   /** --- Internal Interface (Called by EPollBinding) --- **/
   explicit EPollManager(FD &&file_descriptor) : m_epoll_fd(std::move(file_descriptor)) {}
@@ -46,6 +47,8 @@ public:
 
   EPollManager(EPollManager &&) noexcept            = default;
   EPollManager &operator=(EPollManager &&) noexcept = default;
+
+  bool isRunning() const { return m_running; }
 
   /** --- Factory & Core Logic --- **/
   static std::expected<EPollManager, EPollError> create();

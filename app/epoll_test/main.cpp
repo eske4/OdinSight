@@ -26,7 +26,7 @@ int main() {
   }
 
   // 3. Setup the Epoll Binding
-  if (!ebpf_manager->createEPollBinding(&epoll_manager)) {
+  if (!ebpf_manager->createEPollBinding(epoll_manager)) {
     std::cerr << "Failed to create epoll binding" << std::endl;
     return 1;
   }

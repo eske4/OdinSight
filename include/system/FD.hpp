@@ -17,7 +17,23 @@ private:
 
   bool open(const char *path, int flags, mode_t mode = 0) {
     reset();
-    m_fd = ::open(path, flags | O_CLOEXEC, mode);
+    m_fd = ::open(path, flags | O_CLOEXEC | O_NOFOLLOW, mode);
+    return isValid();
+  }
+
+  bool openAt(int dirfd, const char *relPath, uint64_t flags, mode_t mode = 0) {
+    reset();
+
+    struct open_how how = { .flags = flags | O_CLOEXEC, 
+                            .resolve = RESOLVE_NO_XDEV | RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH };
+
+    int res = openat2(dirfd, relPath, &how, sizeof(how));
+
+    // Assign if valid (>= 0), otherwise m_fd remains -1 from reset()
+    if (res >= 0) {
+        m_fd = res;
+    }
+
     return isValid();
   }
 
@@ -33,6 +49,13 @@ public:
       std::cout << "[ERROR] Failed to open file descriptor in FD object" << std::endl;
     }
   }
+
+  FD(const FD& dir, const std::string& relPath, int flags, mode_t mode = 0) {
+    bool result = openAt(dir.get(), relPath.c_str(), flags, mode);
+    if (!result) {
+        std::cerr << "[ERROR] Failed openat for: " << relPath << std::endl;
+    }
+}
 
   // Wrap an existing raw descriptor
 

@@ -37,7 +37,7 @@ bool CommandListener::start() {
   }
 
   sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
+  addr.sun_family  = AF_UNIX;
   // The first byte is \0, making it an "abstract" socket
   addr.sun_path[0] = '\0';
 
@@ -45,7 +45,6 @@ bool CommandListener::start() {
     closeServer();
     return false;
   }
-
 
   std::memcpy(addr.sun_path + 1, m_path.c_str(), m_path.size());
 
@@ -68,7 +67,7 @@ bool CommandListener::start() {
 }
 
 void CommandListener::handleEvents(uint32_t events) {
-// 1. Check for Critical Errors on the Server Socket
+  // 1. Check for Critical Errors on the Server Socket
   if ((events & (EPOLLERR | EPOLLHUP)) != 0U) {
     // This usually means the socket was closed externally or a kernel error
     // occurred. In an anti-cheat, we should probably attempt to restart the
@@ -79,22 +78,23 @@ void CommandListener::handleEvents(uint32_t events) {
   }
 
   if ((events & EPOLLIN) == 0U) {
-      return;
+    return;
   }
 
   // 1. ALWAYS accept the connection to clear the kernel backlog
   FD clientFD;
   clientFD.reset(::accept(m_serverFD.get(), nullptr, nullptr));
   if (clientFD.get() < 0) {
-      return;
+    return;
   }
 
   // 2. NOW check rate limiting. If too fast, the FD goes out of scope and closes.
   auto now = std::chrono::steady_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastAcceptTime).count();
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastAcceptTime).count();
 
   if (elapsed < COMMAND_COOLDOWN_MS) {
-    return; 
+    return;
   }
 
   m_lastAcceptTime = now;
@@ -117,11 +117,11 @@ void CommandListener::processClient(const FD &file_descriptor) {
     uint32_t rawGameId = static_cast<uint32_t>(packet.game_id);
 
     if (rawGameId >= static_cast<uint32_t>(common::GameID::NUM_GAMES)) {
-        return;
+      return;
     }
 
     if (rawCmd >= static_cast<uint32_t>(common::DaemonCommand::NUM_COMMANDS)) {
-        return;
+      return;
     }
 
     if (m_validator && m_validator(packet)) {
@@ -148,12 +148,12 @@ bool CommandListener::setNonBlocking(const sys::FD &file_descriptor) {
 }
 
 // In UnixCommandDaemon.hpp
-bool CommandListener::createEPollBinding(sys::EPollManager *manager) {
+bool CommandListener::createEPollBinding(sys::EPollManager &manager) {
   // Safety check:
   // 1. Manager must exist
   // 2. Server socket must be initialized (m_serverFD > 0)
   // 3. We shouldn't already have an active binding
-  if (manager == nullptr || m_serverFD.get() < 0 || m_binding != nullptr) {
+  if (m_serverFD.get() < 0 || m_binding != nullptr) {
     return false;
   }
 
@@ -166,7 +166,7 @@ bool CommandListener::createEPollBinding(sys::EPollManager *manager) {
   };
 
   // Create the managed binding
-  m_binding = std::make_unique<sys::EPollBinding>(manager, m_serverFD.get(), this, on_event);
+  m_binding = std::make_unique<sys::EPollBinding>(&manager, m_serverFD.get(), this, on_event);
 
   // Attempt to subscribe.
   // Note: Using Level Triggered (default) instead of EPOLLET
