@@ -21,11 +21,19 @@ private:
     return isValid();
   }
 
-  bool openAt(int dirfd, const char *relPath, int flags, mode_t mode = 0) {
+  bool openAt(int dirfd, const char *relPath, uint64_t flags, mode_t mode = 0) {
     reset();
-    // flags | O_CLOEXEC is already great, adding O_NOFOLLOW here 
-    // makes it even safer for security checks.
-    m_fd = ::openat(dirfd, relPath, flags | O_CLOEXEC | O_NOFOLLOW, mode);
+
+    struct open_how how = { .flags = flags | O_CLOEXEC, 
+                            .resolve = RESOLVE_NO_XDEV | RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH };
+
+    int res = openat2(dirfd, relPath, &how, sizeof(how));
+
+    // Assign if valid (>= 0), otherwise m_fd remains -1 from reset()
+    if (res >= 0) {
+        m_fd = res;
+    }
+
     return isValid();
   }
 
