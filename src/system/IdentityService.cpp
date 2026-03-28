@@ -116,6 +116,10 @@ std::vector<std::string> IdentityService::getUserEnvironment(uid_t uid) {
     env.push_back(key + "=" + value);
   };
 
+  std::string safeLibPath = "/usr/lib:/usr/lib32:/lib:/lib32";
+
+  override_env("LD_LIBRARY_PATH", safeLibPath);
+
   // Critical Identity Overrides
   override_env("USER", pwd.pw_name);
   override_env("LOGNAME", pwd.pw_name);
