@@ -148,12 +148,12 @@ bool CommandListener::setNonBlocking(const sys::FD &file_descriptor) {
 }
 
 // In UnixCommandDaemon.hpp
-bool CommandListener::createEPollBinding(sys::EPollManager *manager) {
+bool CommandListener::createEPollBinding(sys::EPollManager &manager) {
   // Safety check:
   // 1. Manager must exist
   // 2. Server socket must be initialized (m_serverFD > 0)
   // 3. We shouldn't already have an active binding
-  if (manager == nullptr || m_serverFD.get() < 0 || m_binding != nullptr) {
+  if (m_serverFD.get() < 0 || m_binding != nullptr) {
     return false;
   }
 
@@ -166,7 +166,7 @@ bool CommandListener::createEPollBinding(sys::EPollManager *manager) {
   };
 
   // Create the managed binding
-  m_binding = std::make_unique<sys::EPollBinding>(manager, m_serverFD.get(), this, on_event);
+  m_binding = std::make_unique<sys::EPollBinding>(&manager, m_serverFD.get(), this, on_event);
 
   // Attempt to subscribe.
   // Note: Using Level Triggered (default) instead of EPOLLET

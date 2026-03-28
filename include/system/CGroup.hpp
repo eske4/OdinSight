@@ -12,6 +12,7 @@
 namespace OdinSight::System {
 
 class CGroup {
+
 private:
   std::string           name;
   std::filesystem::path path = "";
@@ -80,6 +81,7 @@ public:
   [[nodiscard]] const FD          &get_fd() const { return this->fd; }
   [[nodiscard]] const std::string &getName() const { return name; }
   [[nodiscard]] uint64_t           getID() const { return this->id; }
+
 };
 
 } // namespace OdinSight::System

@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Context.hpp"
+#include "EPollBinding.hpp"
+#include "EPollManager.hpp"
 #include "common/GameID.hpp"
 #include "system/CGroup.hpp"
+#include "system/FD.hpp"
 
 #include <linux/sched.h>
 #include <optional>
@@ -27,12 +30,15 @@ public:
 
 private:
   /** --- Private Type Aliases --- **/
-  using GameID = OdinSight::Common::GameID;
-  using CGroup = OdinSight::System::CGroup;
+  using GameID       = OdinSight::Common::GameID;
+  using CGroup       = OdinSight::System::CGroup;
+  using EPollManager = OdinSight::System::EPollManager;
 
   /** --- Members (State) --- **/
-  std::optional<Context> m_ctx;
-  pid_t                  m_gpid = -1;
+  std::optional<Context>                  m_ctx;
+  pid_t                                   m_gpid = -1;
+  std::unique_ptr<System::EPollBinding>   m_binding;
+  System::FD                              m_fd;
 
 public:
   /** --- Lifecycle --- **/
@@ -47,8 +53,9 @@ public:
 
   /** --- Setup & Control --- **/
   [[nodiscard]] bool setup(const GameID &game_id, const CGroup &cgroup_parent);
+  [[nodiscard]] bool createEPollBinding(EPollManager &manager);
 
-  void start();
+  void start(EPollManager &manager);
   void stop();
 
   /** --- Status Queries --- **/
@@ -64,7 +71,7 @@ private:
    * @brief The internal syscall logic (clone3/fexecve).
    * @param ctx The local context prepared by start().
    */
-  void launch(const Context &ctx);
+  void launch(const Context &ctx, EPollManager &manager);
 };
 
 } // namespace OdinSight::Daemon::Launcher

@@ -54,7 +54,7 @@ public:
   [[nodiscard]] bool removeModule(EbpfModuleId mod_id);
 
   // Note: Using the internal alias for the parameter
-  [[nodiscard]] bool createEPollBinding(EPollManager *manager);
+  [[nodiscard]] bool createEPollBinding(EPollManager &manager);
 };
 
 } // namespace OdinSight::Daemon::Monitor::Kernel
