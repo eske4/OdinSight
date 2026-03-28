@@ -100,6 +100,7 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
     return false;
   }
 
+  // Comment out to disable memfd usage easier to inspect cheat without it
   final_exec_fd = std::move(mfd);
 
   // Create the CGroup
