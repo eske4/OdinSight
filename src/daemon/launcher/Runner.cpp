@@ -66,6 +66,7 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
     return false;
   }
 
+  sys::FD final_exec_fd = std::move(exec_fd);
 // 1. Create the anonymous memfd
 sys::FD mfd(::memfd_create(SEALED_MEMFD_NAME, MFD_CLOEXEC | MFD_ALLOW_SEALING));
 if (!mfd.isValid()) {
@@ -75,20 +76,20 @@ if (!mfd.isValid()) {
 
 // 2. Get the size from the disk binary
 struct stat file_info;
-if (::fstat(exec_fd.get(), &file_info) < 0) {
+if (::fstat(final_exec_fd.get(), &file_info) < 0) {
     std::perror("[OdinSight] fstat failed");
     return false;
 }
 
 // We move data from disk_fd to our new mfd in RAM
-if (::sendfile(mfd.get(), exec_fd.get(), nullptr, file_info.st_size) != file_info.st_size) {
+if (::sendfile(mfd.get(), final_exec_fd.get(), nullptr, file_info.st_size) != file_info.st_size) {
     std::perror("[OdinSight] sendfile failed or partial copy");
     return false;
 }
 
 // Tell the kernel we no longer need the disk version in the Page Cache
 // 0, 0 means "the whole file"
-if (int err = ::posix_fadvise(exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED); err != 0) {
+if (int err = ::posix_fadvise(final_exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED); err != 0) {
     std::cerr << "[WARN] Failed to hint kernel to clear disk cache: " 
               << std::strerror(err) << std::endl;
     // We don't return false here because the game can still run!
@@ -98,12 +99,16 @@ if (::fcntl(mfd.get(), F_ADD_SEALS, F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_WRITE |
     return false;
 }
 
+ final_exec_fd = std::move(mfd);
+ 
+
+
   // Create the CGroup
   auto        cgroup_name = cgroup_parent.getName() + "/game";
   sys::CGroup cgroup      = sys::CGService::create(cgroup_name);
 
   this->m_ctx.emplace(Context{.cg             = std::move(cgroup),
-                              .executable_fd  = std::move(mfd),
+                              .executable_fd  = std::move(final_exec_fd),
                               .working_dir_fd = std::move(work_fd),
                               .uid            = uid,
                               .gid            = sys::IdentityService::getGID(uid),
