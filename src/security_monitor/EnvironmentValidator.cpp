@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -72,12 +71,66 @@ bool Validator::isKernelLockdownEnabled() {
   return lockdownStatus.find("[confidentiality]") != std::string::npos;
 }
 
+bool Validator::isKernelModuleLoadingEnabled() {
+  const std::string modulesDisabledFilePath = "/proc/sys/kernel/modules_disabled";
+
+  FD modulesDisabledFd(modulesDisabledFilePath, O_RDONLY);
+  if (!modulesDisabledFd) {
+    return false;
+  }
+
+  std::array<char, 256> buffer{};
+  const ssize_t bytesRead = ::read(modulesDisabledFd.get(), buffer.data(), buffer.size() - 1);
+
+  if (bytesRead <= 0) {
+    return false;
+  }
+
+  buffer[bytesRead] = '\0';
+
+  std::string modulesDisabled(buffer.data());
+  while (!modulesDisabled.empty() &&
+         (modulesDisabled.back() == '\n' || modulesDisabled.back() == '\r')) {
+    modulesDisabled.pop_back();
+  }
+
+  return modulesDisabled == "0";
+}
+
+bool Validator::isKernelModuleSignatureEnforcementEnabled() {
+  const std::string sigEnforceFilePath = "/sys/module/module/parameters/sig_enforce";
+
+  FD sigEnforceFd(sigEnforceFilePath, O_RDONLY);
+  if (!sigEnforceFd) {
+    return false;
+  }
+
+  std::array<char, 256> buffer{};
+  const ssize_t         bytesRead = ::read(sigEnforceFd.get(), buffer.data(), buffer.size() - 1);
+
+  if (bytesRead <= 0) {
+    return false;
+  }
+
+  buffer[bytesRead] = '\0';
+
+  std::string sigEnforce(buffer.data());
+  while (!sigEnforce.empty() && (sigEnforce.back() == '\n' || sigEnforce.back() == '\r')) {
+    sigEnforce.pop_back();
+  }
+
+  return sigEnforce == "1" || sigEnforce == "Y" || sigEnforce == "y";
+}
+
 bool Validator::isValid() {
-  bool secureBootEnabled = isSecureBootEnabled();
-  bool kLockdownEnabled  = isKernelLockdownEnabled();
+  bool secureBootEnabled                       = isSecureBootEnabled();
+  bool kLockdownEnabled                        = isKernelLockdownEnabled();
+  bool kernelModulesEnabled                    = isKernelModuleLoadingEnabled();
+  bool kernelModuleSignatureEnforcementEnabled = isKernelModuleSignatureEnforcementEnabled();
 
   bool valid = true;
 
+  /*Mandatory*/
   if (!secureBootEnabled) {
     std::cout << "Error: Secure Boot is not enabled." << std::endl;
     valid = false;
@@ -87,7 +140,13 @@ bool Validator::isValid() {
     std::cout << "Error: Kernel lockdown(Confidential Mode) is not enabled." << std::endl;
     valid = false;
   }
+  /*Optional*/
+  if (!kernelModulesEnabled) {
+    std::cout << "Warning: Kernel module loading is disabled." << std::endl;
+  } else if (!kernelModuleSignatureEnforcementEnabled) {
+    std::cout << "Error: Kernel module signature enforcement is disabled." << std::endl;
+  }
 
-  return true;
+  return valid;
 }
-}
+} // namespace OdinSight::System::Environment
