@@ -1,103 +1,93 @@
 #include "EnvironmentValidator.hpp"
-#include <iostream>
-#include <fstream>
-#include <filesystem>
-#include <string>
-#include <optional>
-#include <vector>
-#include <unordered_set>
-#include <sstream>
+#include "system/FD.hpp"
 #include <array>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace fs = std::filesystem;
 
-namespace System::Environment
-{
+namespace OdinSight::System::Environment {
 
-    bool Validator::isSecureBootEnabled()
-    {
-        const std::string path = "/sys/firmware/efi/efivars/";
-        std::string secureBootFilePath;
+bool Validator::isSecureBootEnabled() {
+  const std::string dirPath = "/sys/firmware/efi/efivars/";
+  std::string       secureBootFileName;
 
-        if (!fs::exists(path))
-        {
-            return false;
-        }
+  if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+    return false;
+  }
 
-        for (const auto &entry : fs::directory_iterator(path))
-        {
-            const auto &filename = entry.path().filename().string();
+  for (const auto &entry : fs::directory_iterator(dirPath)) {
+    const auto &filename = entry.path().filename().string();
 
-            if (filename.rfind("SecureBoot-", 0) == 0)
-            {
-                secureBootFilePath = entry.path().string();
-                break;
-            }
-        }
-
-        if (secureBootFilePath.empty())
-        {
-            return false;
-        }
-
-        std::ifstream secureBootFile(secureBootFilePath, std::ios::binary);
-
-        if (!secureBootFile.is_open())
-        {
-            return false;
-        }
-
-        char byte;
-        uint8_t lastByte = 0;
-
-        while (secureBootFile.get(byte))
-        {
-            lastByte = static_cast<unsigned char>(byte);
-        }
-
-        return lastByte == 1;
+    if (filename.rfind("SecureBoot-", 0) == 0) {
+      secureBootFileName = filename;
+      break;
     }
+  }
 
-    bool Validator::isKernelLockdownEnabled()
-    {
-        const std::string lockdownPath = "/sys/kernel/security/lockdown";
-        std::ifstream lockdownFile(lockdownPath);
+  if (secureBootFileName.empty()) {
+    return false;
+  }
 
-        if (!lockdownFile.is_open())
-        {
-            return false;
-        }
+  FD dirFd(dirPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+  if (!dirFd) {
+    return false;
+  }
 
-        std::string lockdownStatus;
-        std::getline(lockdownFile, lockdownStatus);
+  FD secureBootFd(dirFd, secureBootFileName, O_RDONLY);
+  if (!secureBootFd) {
+    return false;
+  }
+  uint8_t data[5];
+  if (::read(secureBootFd.get(), data, sizeof(data)) != 5) {
+    return false;
+  }
 
-        if (lockdownStatus.find("[confidentiality]") != std::string::npos)
-        {
-            return true;
-        }
+  return data[4] == 1;
+}
 
-        return false;
-    }
+bool Validator::isKernelLockdownEnabled() {
+  const std::string lockdownFilePath = "/sys/kernel/security/lockdown";
 
-    bool Validator::isValid()
-    {
-        bool secureBootEnabled = isSecureBootEnabled();
-        bool kLockdownEnabled = isKernelLockdownEnabled();
+  FD lockdownFd(lockdownFilePath, O_RDONLY);
+  if (!lockdownFd) {
+    return false;
+  }
+  std::array<char, 256> buffer{};
+  const ssize_t         bytesRead = ::read(lockdownFd.get(), buffer.data(), buffer.size() - 1);
 
-        bool valid = true;
+  if (bytesRead <= 0) {
+    return false;
+  }
 
-        if (!secureBootEnabled)
-        {
-            std::cout << "Error: Secure Boot is not enabled." << std::endl;
-            valid = false;
-        }
+  buffer[bytesRead] = '\0';
+  const std::string lockdownStatus(buffer.data());
 
-        if (!kLockdownEnabled)
-        {
-            std::cout << "Error: Kernel lockdown(Confidential Mode) is not enabled." << std::endl;
-            valid = false;
-        }
+  return lockdownStatus.find("[confidentiality]") != std::string::npos;
+}
 
-        return true;
-    }
+bool Validator::isValid() {
+  bool secureBootEnabled = isSecureBootEnabled();
+  bool kLockdownEnabled  = isKernelLockdownEnabled();
+
+  bool valid = true;
+
+  if (!secureBootEnabled) {
+    std::cout << "Error: Secure Boot is not enabled." << std::endl;
+    valid = false;
+  }
+
+  if (!kLockdownEnabled) {
+    std::cout << "Error: Kernel lockdown(Confidential Mode) is not enabled." << std::endl;
+    valid = false;
+  }
+
+  return true;
+}
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace System::Environment
+namespace OdinSight::System::Environment
 {
     class Validator
     {
