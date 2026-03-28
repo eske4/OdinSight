@@ -17,7 +17,7 @@ private:
 
   bool open(const char *path, int flags, mode_t mode = 0) {
     reset();
-    m_fd = ::open(path, flags | O_CLOEXEC, mode);
+    m_fd = ::open(path, flags | O_CLOEXEC | O_NOFOLLOW, mode);
     return isValid();
   }
 

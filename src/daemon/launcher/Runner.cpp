@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring> // For strerror
 #include <fcntl.h>
+#include <filesystem>
 #include <grp.h>
 #include <iostream>
 #include <linux/prctl.h>
@@ -22,6 +23,7 @@ namespace OdinSight::Daemon::Launcher {
 
 namespace sys      = OdinSight::System;
 namespace CInterop = OdinSight::Util::CInterop;
+namespace fs = std::filesystem;
 
 bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
   if (!this->canLaunch()) {
@@ -40,9 +42,14 @@ bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
 
   uid_t uid = sys::IdentityService::getUID();
 
+  fs::path absoluteWorkPath = fs::absolute(entry->dataDir);
+  sys::FD work_parent_fd(absoluteWorkPath.parent_path().string(), O_PATH | O_DIRECTORY);
+  sys::FD work_fd(work_parent_fd, absoluteWorkPath.filename().string(), O_PATH | O_DIRECTORY);
+
   // Open File Descriptors with O_CLOEXEC to prevent leaking to other forks
-  sys::FD exec_fd(entry->binary, O_PATH);
-  sys::FD work_fd(entry->dataDir, O_PATH);
+  fs::path absoluteBinPath = fs::absolute(entry->binary);
+  sys::FD bin_dir_fd(absoluteBinPath.parent_path().string(), O_PATH | O_DIRECTORY);
+  sys::FD exec_fd(bin_dir_fd, absoluteBinPath.filename().string(), O_PATH);
 
   // Create the CGroup
   auto        cgroup_name = cgroup_parent.getName() + "/game";
