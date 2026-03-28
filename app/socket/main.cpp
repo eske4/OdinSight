@@ -1,7 +1,7 @@
+#include "CGroupService.hpp"
 #include "CommandListener.hpp"
 #include "EPollManager.hpp"
 #include "Runner.hpp"
-#include "CGroupService.hpp"
 #include "common/Protocol.hpp"
 #include "system/CGroup.hpp"
 #include <iostream>
@@ -11,7 +11,7 @@ namespace sys     = OdinSight::System;
 namespace common  = OdinSight::Common;
 
 int main() {
-                                            //
+  //
   auto epoll_manager = sys::EPollManager::create().value();
 
   // 1. Define logic outside the class (no clutter, just a lambda!)
@@ -36,15 +36,16 @@ int main() {
 
   daemon.createEPollBinding(epoll_manager);
 
-  std::cout << "Daemon listening on abstract socket: \\0" << OdinSight::Common::COMMAND_SOCKET_PATH << std::endl;
+  std::cout << "Daemon listening on abstract socket: \\0" << OdinSight::Common::COMMAND_SOCKET_PATH
+            << std::endl;
 
   // 3. Simple Manual Epoll Loop (Since we aren't using your full EPollManager
   // yet)
 
-  while (true) {
-        // Poll with a timeout (e.g., 100ms) so the loop can check g_keep_running
-        auto result = epoll_manager.poll(100);
-    }
+  while (epoll_manager.isRunning()) {
+    // Poll with a timeout (e.g., 100ms) so the loop can check g_keep_running
+    auto result = epoll_manager.poll(100);
+  }
 
   return 0;
 } // namespace ACName::Daemon::Control

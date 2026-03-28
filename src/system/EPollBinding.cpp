@@ -18,7 +18,7 @@ EPollBinding::EPollBinding(EPollManager *manager, int file_descriptor, void *ctx
 
 EPollBinding::~EPollBinding() {
   // ONLY unsubscribe if we actually have a manager and a valid FD
-  if (m_manager != nullptr && m_fd >= 0) {
+  if (m_manager != nullptr && m_fd >= 0 && m_active) {
     (void)m_manager->unsubscribe(m_fd, this);
   }
   invalidate();
@@ -43,7 +43,7 @@ EPollBinding &EPollBinding::operator=(EPollBinding &&other) noexcept {
   if (this != &other) {
     // If THIS object was already holding a subscription,
     // the destructor logic should trigger or we manually clean up:
-    if (m_manager != nullptr && m_fd >= 0) {
+    if (m_manager != nullptr && m_fd >= 0 && m_active) {
       (void)m_manager->unsubscribe(m_fd, this);
     }
 
@@ -61,28 +61,23 @@ EPollBinding &EPollBinding::operator=(EPollBinding &&other) noexcept {
 }
 
 bool EPollBinding::unsubscribe() {
-  if (!m_active) {
-    return true; // Already paused, no work needed
+  if (m_manager != nullptr && m_fd >= 0) {
+    if (m_manager->unsubscribe(m_fd, this)) {
+      m_active     = false;
+      m_event_mask = 0;
+      return true;
+    }
   }
-
-  if (m_manager != nullptr && m_manager->unsubscribe(m_fd, this)) {
-    m_active     = false;
-    m_event_mask = 0;
-    return true;
-  }
-  return false; // Manager failed to talk to the kernel
+  return false;
 }
 
 bool EPollBinding::subscribe(uint32_t events) {
-  if (m_active && m_event_mask == events) {
-    return true; // Already active
-  }
-
-  // Assuming your manager's subscribe returns a bool
-  if (m_manager != nullptr && m_manager->subscribe(m_fd, this, events)) {
-    m_active     = true;
-    m_event_mask = events;
-    return true;
+  if (m_manager != nullptr && m_fd >= 0) {
+    if (m_manager->subscribe(m_fd, this, events)) {
+      m_active     = true;
+      m_event_mask = events;
+      return true;
+    }
   }
   return false;
 }
