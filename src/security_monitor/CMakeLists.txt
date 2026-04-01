@@ -1,5 +1,6 @@
 set(LAUNCHER_SOURCES
     EnvironmentValidator.cpp
+    probes/UnsignedKernelModuleProbe.cpp
 )
 
 add_library(EnvironmentValidator ${LAUNCHER_SOURCES})

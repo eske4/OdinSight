@@ -1,4 +1,5 @@
 #pragma once
+
 namespace OdinSight::System::Environment {
 class Validator {
 private:
@@ -22,18 +23,6 @@ private:
   static bool isKernelLockdownEnabled();
 
   /**
-   * Checks whether kernel module loading is enabled.
-   *
-   * Reads /proc/sys/kernel/modules_disabled.
-   * A value of "0" means kernel modules may still be loaded.
-   * A value of "1" means loading new kernel modules is disabled entirely,
-   * regardless of whether they are signed or unsigned.
-   *
-   * @return true if kernel module loading is enabled, false otherwise.
-   */
-  static bool isKernelModuleLoadingEnabled();
-
-  /**
    * Checks whether kernel module signature enforcement is enabled.
    *
    * Reads /sys/module/module/parameters/sig_enforce.
@@ -42,6 +31,13 @@ private:
    * @return true if signature enforcement is enabled, false otherwise.
    */
   static bool isKernelModuleSignatureEnforcementEnabled();
+
+  /**
+   * Actively probes whether the running system blocks a real unsigned module load.
+   *
+   * @return true if the kernel blocked the load attempt, false otherwise.
+   */
+  static bool isUnsignedKernelModuleLoadBlocked();
 
 public:
   static bool isValid();
