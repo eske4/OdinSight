@@ -1,6 +1,7 @@
 #include "EPollManager.hpp"
 #include "EbpfManager.hpp"
 #include "SyscallModule.hpp"
+#include <iostream>
 #include <memory>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -9,29 +10,28 @@
 namespace KMod   = OdinSight::Daemon::Monitor::Kernel::Modules;
 namespace Kernel = OdinSight::Daemon::Monitor::Kernel;
 namespace sys    = OdinSight::System;
+
 int main() {
 
-  auto ebpf_manager  = std::make_unique<Kernel::EbpfManager>();
-  auto epoll_manager = sys::EPollManager::create().value();
+  auto epoll_manager = sys::EPollManager::create();
+  auto ebpf_manager  = Kernel::EbpfManager::create();
 
-  if (!ebpf_manager->start()) {
+  auto &epoll_mgr = epoll_manager.value();
+  auto &ebpf      = ebpf_manager.value();
+  auto  mod       = Kernel::IEbpfModule::create<KMod::SyscallModule>();
+
+  if (!ebpf->addModule(std::move(mod.value()))) {
     return 1;
   }
   // 1. Add your modules
-  auto mod = std::make_unique<KMod::SyscallModule>();
-
-  if (!ebpf_manager->addModule(std::move(mod))) {
-    std::cerr << "Failed to load/attach BPF module" << std::endl;
-    return 1;
-  }
 
   // 3. Setup the Epoll Binding
-  if (!ebpf_manager->createEPollBinding(epoll_manager)) {
+  if (!ebpf->createEPollBinding(epoll_mgr)) {
     std::cerr << "Failed to create epoll binding" << std::endl;
     return 1;
   }
 
-  while (true) {
-    int events = epoll_manager.poll(100).value();
+  while (epoll_mgr.isRunning()) {
+    int events = epoll_mgr.poll(100).value();
   }
 }

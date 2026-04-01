@@ -5,19 +5,23 @@
 #include "common/Protocol.hpp"
 
 #include <chrono>
+#include <expected>
 #include <functional>
 #include <memory>
 #include <string>
 #include <sys/epoll.h>
+#include <system_error>
 
 namespace OdinSight::Daemon::Control {
 
-class CommandListener {
+class CommandListener final {
 public:
   /** --- Public Type Aliases --- **/
   using CommandPacket = OdinSight::Common::CommandPacket;
-  using Validator     = std::function<bool(const CommandPacket &packet)>;
-  using Handler       = std::function<void(const CommandPacket &packet)>;
+  using Handler =
+      std::function<void(const CommandPacket &packet)>; // Change based on event system design
+
+  template <typename T> using Result = std::expected<T, std::error_code>;
 
 private:
   /** --- Private Type Aliases --- **/
@@ -31,40 +35,40 @@ private:
 
   /** --- Members (State) --- **/
   std::string                           m_path;
-  Validator                             m_validator;
-  Handler                               m_handler;
   FD                                    m_serverFD;
   std::unique_ptr<EPollBinding>         m_binding;
+  Handler                               m_handler;
   std::chrono::steady_clock::time_point m_lastAcceptTime{
       std::chrono::steady_clock::now() - std::chrono::milliseconds(COMMAND_COOLDOWN_MS)};
 
+  /** --- Private Constructor (Factory Pattern) --- **/
+  explicit CommandListener(std::string path, Handler handler);
+
 public:
   /** --- Lifecycle & Control --- **/
-  explicit CommandListener(std::string path, Validator validator = nullptr,
-                           Handler handler = nullptr);
   ~CommandListener();
 
-  // Rule of Three (Deleted)
+  // Rule of Five singleton ish
   CommandListener(const CommandListener &)            = delete;
   CommandListener &operator=(const CommandListener &) = delete;
+  CommandListener(CommandListener &&)                 = delete;
+  CommandListener &operator=(CommandListener &&)      = delete;
 
-  bool start();
-  void stop();
+  static Result<std::unique_ptr<CommandListener>> create();
+  Result<void>                                    start();
+  void                                            stop();
 
   /** --- Network / Epoll Integration --- **/
-  bool createEPollBinding(EPollManager &manager);
-  void handleEvents(uint32_t events);
+  bool         createEPollBinding(EPollManager &manager);
+  Result<void> setHandler(Handler handler);
+  void         handleEvents(uint32_t events);
 
-  [[nodiscard]] int getFd() const { return m_serverFD; }
+  [[nodiscard]] Result<int> getFd() const { return m_serverFD.get(); }
 
 private:
   /** --- Internal Helpers --- **/
   void processClient(const FD &file_descriptor);
   void closeServer();
-
-  static bool setNonBlocking(const FD &file_descriptor);
-  static bool defaultValidator(const CommandPacket &packet) { return true; }
-  static void defaultHandler(const CommandPacket &packet) {}
 };
 
 } // namespace OdinSight::Daemon::Control

@@ -7,17 +7,58 @@
 #include <stdint.h>
 #include <sys/epoll.h>
 
+template <typename T> using Result = std::expected<T, std::error_code>;
+
 namespace OdinSight::Daemon::Monitor::Kernel {
 
-EbpfManager::EbpfManager()
-    : m_ringbuf_reader(nullptr, ring_buffer__free),
-      m_master_skel(nullptr, master__destroy) // or skel if using skeleton
-{}
+Result<std::unique_ptr<EbpfManager>> EbpfManager::create() {
+  auto instance = std::unique_ptr<EbpfManager>(new EbpfManager());
+
+  instance->m_modules = {};
+
+  master *skel = master__open();
+  if (skel == nullptr) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
+
+  instance->m_master_skel.reset(skel);
+
+  // 2. Load (Integer: Check negative + return value)
+  if (int err = master__load(instance->m_master_skel.get()); err < 0) {
+    return std::unexpected(std::error_code(-err, std::system_category()));
+  }
+
+  // 3. Map Identification (Null check FIRST)
+  instance->m_shared_rb_map = instance->m_master_skel->maps.rb;
+
+  int raw_fd = bpf_map__fd(instance->m_shared_rb_map);
+  if (raw_fd < 0) {
+    return std::unexpected(std::error_code(-raw_fd, std::system_category()));
+  }
+
+  auto shared_rb_fd = FD::adopt(raw_fd);
+  if (!shared_rb_fd) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+  }
+
+  instance->m_shared_rb_fd = std::move(shared_rb_fd.value());
+
+  auto *ring_buffer =
+      ring_buffer__new(instance->m_shared_rb_fd.get(), handleEvent, instance.get(), nullptr);
+  if (ring_buffer == nullptr) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
+
+  instance->m_ringbuf_reader.reset(ring_buffer);
+
+  // Set this ONLY when everything is guaranteed to work
+  return instance;
+}
 
 int EbpfManager::handleEvent(void *ctx, void *data, size_t data_sz) {
   auto *self = static_cast<EbpfManager *>(ctx);
   if (self == nullptr || data == nullptr || data_sz != sizeof(ebpf_event)) {
-    return 0;
+    return -1;
   }
 
   const auto *event = static_cast<const ebpf_event *>(data);
@@ -35,83 +76,49 @@ int EbpfManager::handleEvent(void *ctx, void *data, size_t data_sz) {
   return 0;
 }
 
-bool EbpfManager::start() {
-  master *skel = master__open();
-  if (skel == nullptr) {
-    return false;
+Result<void> EbpfManager::addModule(std::unique_ptr<IEbpfModule> mod) {
+  // 1. Basic Parameter Validation
+  if (mod == nullptr) {
+    return std::unexpected(std::make_error_code(std::errc::invalid_argument));
   }
 
-  m_master_skel.reset(skel);
-
-  if (master__load(m_master_skel.get()) < 0) {
-    return false;
+  // 2. Manager State Validation
+  if (!isActive() || !isReady()) {
+    return std::unexpected(std::make_error_code(std::errc::not_connected));
   }
 
-  m_shared_rb_map = m_master_skel->maps.rb;
-  if (m_shared_rb_map == nullptr) {
-    return false;
-  }
-
-  m_shared_rb_fd = FD(bpf_map__fd(m_shared_rb_map));
-
-  auto *ring_buffer = ring_buffer__new(m_shared_rb_fd.get(), handleEvent, this, nullptr);
-  if (ring_buffer == nullptr) {
-    return false; // m_isActive remains false (default from constructor)
-  }
-
-  m_ringbuf_reader.reset(ring_buffer);
-
-  // Set this ONLY when everything is guaranteed to work
-  m_isActive = true;
-  return true;
-}
-
-bool EbpfManager::addModule(std::unique_ptr<IEbpfModule> mod) {
-  if (mod == nullptr || !m_isActive) {
-    return false;
-  }
-
+  // 3. Slot Availability Check (DO THIS BEFORE ATTACHING TO KERNEL)
   size_t index = static_cast<size_t>(mod->getId());
-
   if (index >= m_modules.size()) {
-    return false;
+    return std::unexpected(std::make_error_code(std::errc::result_out_of_range));
   }
 
-  // Only attempt to load if the manager is ready
-  if (m_ringbuf_reader && m_shared_rb_fd.isValid()) {
-    int shared_fd = m_shared_rb_fd.get();
-
-    if (!mod->open()) {
-      return false;
-    }
-
-    if (!mod->load(shared_fd)) {
-      return false; // Redirection
-    }
-
-    if (!mod->attach()) {
-      return false;
-    }
+  if (m_modules[index] != nullptr) {
+    return std::unexpected(std::make_error_code(std::errc::device_or_resource_busy));
   }
 
+  // 4. Kernel Lifecycle
+  int shared_fd = m_shared_rb_fd.get();
+
+  if (auto res = mod->open(); !res) {
+    return res;
+  }
+  if (auto res = mod->load(shared_fd); !res) {
+    return res;
+  }
+  if (auto res = mod->attach(); !res) {
+    return res;
+  }
+
+  // 5. Final Commitment
   m_modules[index] = std::move(mod);
-  return true;
-}
-
-bool EbpfManager::removeModule(EbpfModuleId mod_id) {
-  size_t index = static_cast<size_t>(mod_id);
-  if (!m_isActive || index >= m_modules.size() || !m_modules[index]) {
-    return false;
-  }
-
-  m_modules[index].reset();
-  return true;
+  return {};
 }
 
 bool EbpfManager::createEPollBinding(EPollManager &manager) {
   // Safety check: don't create if no ring buffer, no initilization and already
   // have a binding
-  if (m_ringbuf_reader == nullptr || m_binding != nullptr || !m_isActive) {
+  if (m_ringbuf_reader == nullptr || m_binding != nullptr || !isActive()) {
     return false;
   }
 

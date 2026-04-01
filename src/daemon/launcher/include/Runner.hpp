@@ -3,6 +3,7 @@
 #include "Context.hpp"
 #include "EPollBinding.hpp"
 #include "EPollManager.hpp"
+#include "GameWhitelist.hpp"
 #include "common/GameID.hpp"
 #include "system/CGroup.hpp"
 #include "system/FD.hpp"
@@ -14,37 +15,28 @@
 
 namespace OdinSight::Daemon::Launcher {
 
-class Runner {
-public:
-  /** --- Public Types & Enums --- **/
-  enum class LauncherStatus : int {
-    Success           = 0,
-    SetGroupsFailed   = 100,
-    SetGidFailed      = 101,
-    SetUidFailed      = 102,
-    ChdirFailed       = 103,
-    NoNewPrivsFailed  = 104,
-    SetDumpableFailed = 105,
-    ExecveFailed      = 106
-  };
-
+class Runner final {
 private:
   /** --- Private Type Aliases --- **/
   using GameID       = OdinSight::Common::GameID;
   using CGroup       = OdinSight::System::CGroup;
   using EPollManager = OdinSight::System::EPollManager;
+  using FD           = OdinSight::System::FD;
+  using GameEntry    = OdinSight::Daemon::Launcher::GameEntry;
+
+  template <typename T> using Result = std::expected<T, std::error_code>;
 
   static constexpr const char *SEALED_MEMFD_NAME = "os_sealed_game";
 
   /** --- Members (State) --- **/
-  std::optional<Context>                m_ctx;
-  pid_t                                 m_gpid = -1;
-  std::unique_ptr<System::EPollBinding> m_binding;
-  System::FD                            m_fd;
+  std::optional<Context> m_ctx  = std::nullopt;
+  pid_t                  m_gpid = -1;
+  FD                     m_fd   = FD::empty();
+
+  Runner();
 
 public:
   /** --- Lifecycle --- **/
-  Runner() = default;
   ~Runner() { stop(); }
 
   // Rule of Five (All deleted to ensure singleton-like process ownership)
@@ -53,11 +45,14 @@ public:
   Runner(Runner &&)                 = delete;
   Runner &operator=(Runner &&)      = delete;
 
-  /** --- Setup & Control --- **/
-  [[nodiscard]] bool setup(const GameID &game_id, const CGroup &cgroup_parent);
-  [[nodiscard]] bool createEPollBinding(EPollManager &manager);
+  static Result<std::unique_ptr<Runner>> create();
 
-  void start(EPollManager &manager);
+  /** --- Setup & Control --- **/
+  [[nodiscard]] Result<void> setup(const GameID &game_id, const CGroup &cgroup_parent);
+  Result<void>               start(EPollManager &manager);
+
+  /** --- Cleaning --- **/
+  void clearRuntimeState();
   void stop();
 
   /** --- Status Queries --- **/
@@ -73,7 +68,14 @@ private:
    * @brief The internal syscall logic (clone3/fexecve).
    * @param ctx The local context prepared by start().
    */
-  void launch(const Context &ctx, EPollManager &manager);
+  void                                           launch(const Context &ctx, EPollManager &manager);
+  // Helper functions for setup
+  static Result<std::tuple<FD, FD, std::string>> resolve_paths(const GameEntry &entry, uid_t uid);
+  [[nodiscard]] static Result<FD>                create_sealed_memfd(const FD &disk_exec_fd);
+
+  // Helper Function for start
+  void execute_child_setup(int error_fd, const std::vector<char *> &argv,
+                           const std::vector<char *> &envp);
 };
 
 } // namespace OdinSight::Daemon::Launcher

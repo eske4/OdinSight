@@ -15,11 +15,18 @@ namespace common  = OdinSight::Common;
 int main() {
   //
   auto                                epoll_manager = sys::EPollManager::create().value();
-  sys::CGroup                         pCGroup       = sys::CGService::create("daemon");
+  auto                                pCGroup       = sys::CGroup::create("daemon");
+  OdinSight::System::CGroup           daemonGroup   = std::move(pCGroup.value());
   OdinSight::Daemon::Launcher::Runner runner;
 
-  runner.setup(common::GameID::AssaultCube, pCGroup);
-  runner.start(epoll_manager);
+  auto res = runner.setup(common::GameID::AssaultCube, daemonGroup);
+  if (!res) {
+    std::clog << res.error().message() << std::endl;
+  }
+  auto res2 = runner.start(epoll_manager);
+  if (!res2) {
+    std::clog << res2.error().message() << std::endl;
+  }
 
   // 1. Define logic outside the class (no clutter, just a lambda!)
   auto validator = [](const common::CommandPacket &packet) {
@@ -52,6 +59,10 @@ int main() {
   while (epoll_manager.isRunning()) {
     // Poll with a timeout (e.g., 100ms) so the loop can check g_keep_running
     auto result = epoll_manager.poll(100);
+    if (!result) {
+
+      std::clog << "Poll failed: " << result.error().message() << "\n";
+    }
   }
 
   return 0;

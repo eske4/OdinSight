@@ -3,17 +3,19 @@
 #include "EPollManager.hpp"
 #include "GameWhitelist.hpp"
 #include "IdentityService.hpp"
+#include "system/FD.hpp"
 #include "utils/StringUtil.hpp"
 
 // System headers
 #include <cstdint>
-#include <cstring> // For strerror
+#include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <grp.h>
 #include <iostream>
 #include <linux/prctl.h>
 #include <linux/sched.h>
+#include <optional>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -25,264 +27,357 @@
 
 namespace OdinSight::Daemon::Launcher {
 
-namespace sys      = OdinSight::System;
-namespace CInterop = OdinSight::Util::CInterop;
-namespace fs       = std::filesystem;
-using EPollBinding = OdinSight::System::EPollBinding;
+namespace sys         = OdinSight::System;
+namespace CInterop    = OdinSight::Util::CInterop;
+namespace fs          = std::filesystem;
+using EPollBinding    = OdinSight::System::EPollBinding;
+using FD              = OdinSight::System::FD;
+using IdentityService = OdinSight::System::IdentityService;
+using CGService       = OdinSight::System::CGService;
 
-bool Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
-  if (!this->canLaunch()) {
-    std::cout << "Game is already running, cannot setup new context.";
-    return false;
+template <typename T> using Result = std::expected<T, std::error_code>;
+
+Result<std::unique_ptr<Runner>> Runner::create() {
+  // 1. Allocate on the heap.
+  auto instance = std::unique_ptr<Runner>(new Runner());
+
+  // 2. Safety check for allocation failure (though rare in modern Linux)
+  if (!instance) {
+    return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
   }
 
-  this->m_ctx.reset();
+  // 3. Initialize the members via the pointer
+  instance->m_ctx  = std::nullopt;
+  instance->m_fd   = FD::empty();
+  instance->m_gpid = -1;
+
+  // 4. Return the unique_ptr.
+  return instance;
+}
+
+Result<void> Runner::setup(const GameID &game_id, const CGroup &cgroup_parent) {
+  // 1. Validation & State Reset
+  if (!this->canLaunch()) {
+    return std::unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  }
+  stop();
   m_gpid = -1;
 
-  std::optional<GameEntry> entry = findGame(game_id);
-
-  if (!entry.has_value()) {
-    return false;
+  // 2. Resolve Game & Identity (The "Who" and "What")
+  auto entry = findGame(game_id);
+  if (!entry) {
+    return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
   }
 
-  uid_t uid = sys::IdentityService::getUID();
+  auto uid_res = IdentityService::getUID();
+  if (!uid_res) {
+    return std::unexpected(uid_res.error());
+  }
 
-  fs::path absWorkPath = sys::IdentityService::expandUserPath(entry->dataDir.string(), uid);
-  fs::path absBinPath  = sys::IdentityService::expandUserPath(entry->binary.string(), uid);
+  auto gid_res = IdentityService::getGID(*uid_res);
+  if (!gid_res) {
+    return std::unexpected(gid_res.error());
+  }
 
-  if (!absWorkPath.has_filename()) {
+  auto env_res = IdentityService::getUserEnvironment(*uid_res);
+  if (!env_res) {
+    return std::unexpected(env_res.error()); // Fixed your flipped check
+  }
+
+  // 3. System Resource Allocation (The "Where")
+  // Note: Pass just the child name "game" if createAt uses mkdirat
+  auto cgroup_res = CGroup::createAt(cgroup_parent.getFD(), cgroup_parent.getPath(), "game");
+  if (!cgroup_res) {
+    return std::unexpected(cgroup_res.error());
+  }
+
+  auto paths_res = resolve_paths(*entry, *uid_res);
+  if (!paths_res) {
+    return std::unexpected(paths_res.error());
+  }
+
+  auto [work_fd, disk_exec_fd, absBinPath] = std::move(*paths_res);
+
+  // 4. Ghosting (Disk to RAM)
+  FD final_exec_fd = std::move(disk_exec_fd);
+  {
+    auto ghost_res = create_sealed_memfd(final_exec_fd);
+    if (!ghost_res) {
+      return std::unexpected(ghost_res.error());
+    }
+    ::posix_fadvise(final_exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED);
+
+    final_exec_fd = std::move(*ghost_res);
+  }
+
+  // 5. Final Context Assembly
+  this->m_ctx.emplace(Context{.cg             = std::move(*cgroup_res),
+                              .executable_fd  = std::move(final_exec_fd),
+                              .working_dir_fd = std::move(work_fd),
+                              .uid            = *uid_res,
+                              .gid            = *gid_res,
+                              .game_name      = entry->binary.filename().string(),
+                              .envp           = std::move(*env_res),
+                              .argv           = {std::move(absBinPath)}});
+
+  return {};
+}
+
+Result<std::tuple<FD, FD, std::string>> Runner::resolve_paths(const GameEntry &entry, uid_t uid) {
+  // 1. Path Expansion
+  auto work_path_res = sys::IdentityService::expandUserPath(entry.dataDir.string(), uid);
+  auto bin_path_res  = sys::IdentityService::expandUserPath(entry.binary.string(), uid);
+
+  if (!work_path_res || !bin_path_res) {
+    return std::unexpected(work_path_res ? bin_path_res.error() : work_path_res.error());
+  }
+
+  std::filesystem::path absWorkPath = *work_path_res;
+  std::filesystem::path absBinPath  = *bin_path_res;
+
+  if (!absWorkPath.has_filename() && absWorkPath.has_parent_path()) {
     absWorkPath = absWorkPath.parent_path();
   }
 
-  sys::FD work_parent_fd(absWorkPath.parent_path().string(), O_PATH | O_DIRECTORY);
-  sys::FD work_fd(work_parent_fd, absWorkPath.filename().string(), O_PATH | O_DIRECTORY);
-
-  // Open File Descriptors with O_CLOEXEC to prevent leaking to other forks
-  sys::FD bin_dir_fd(absBinPath.parent_path().string(), O_PATH | O_DIRECTORY);
-  sys::FD exec_fd(bin_dir_fd, absBinPath.filename().string(), O_RDONLY);
-
-  if (!exec_fd || !work_fd) {
-    std::cerr << "Launcher Error: Failed to acquire directory/binary handles." << std::endl;
-    return false;
+  // 2. Resolve Working Directory
+  auto work_parent_res = FD::open(absWorkPath.parent_path().string(), O_PATH | O_DIRECTORY);
+  if (!work_parent_res) {
+    return std::unexpected(work_parent_res.error());
   }
 
-  sys::FD final_exec_fd = std::move(exec_fd);
-  // 1. Create the anonymous memfd
-  sys::FD mfd(::memfd_create(SEALED_MEMFD_NAME, MFD_CLOEXEC | MFD_ALLOW_SEALING));
-  if (!mfd.isValid()) {
-    std::perror("[OdinSight] memfd_create failed");
-    return false;
+  // Pass the Result's value (the FD object) directly to openAt
+  auto work_fd_res = FD::openAt(*work_parent_res, absWorkPath.filename().string(),
+                                O_PATH | O_DIRECTORY | O_CLOEXEC);
+  if (!work_fd_res) {
+    return std::unexpected(work_fd_res.error());
   }
 
-  // 2. Get the size from the disk binary
-  struct stat file_info;
-  if (::fstat(final_exec_fd.get(), &file_info) < 0) {
-    std::perror("[OdinSight] fstat failed");
-    return false;
+  // 3. Resolve Binary
+  auto bin_dir_res = FD::open(absBinPath.parent_path().string(), O_PATH | O_DIRECTORY);
+  if (!bin_dir_res) {
+    return std::unexpected(bin_dir_res.error());
   }
 
-  // We move data from disk_fd to our new mfd in RAM
-  if (::sendfile(mfd.get(), final_exec_fd.get(), nullptr, file_info.st_size) != file_info.st_size) {
-    std::perror("[OdinSight] sendfile failed or partial copy");
-    return false;
+  // Pass the Result's value (the FD object) directly to openAt
+  auto exec_fd_res = FD::openAt(*bin_dir_res, absBinPath.filename().string(), O_RDONLY | O_CLOEXEC);
+  if (!exec_fd_res) {
+    return std::unexpected(exec_fd_res.error());
   }
 
-  // Tell the kernel we no longer need the disk version in the Page Cache
-  // 0, 0 means "the whole file"
-  if (int err = ::posix_fadvise(final_exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED); err != 0) {
-    std::cerr << "[WARN] Failed to hint kernel to clear disk cache: " << std::strerror(err)
-              << std::endl;
-    // We don't return false here because the game can still run!
-  }
-
-  if (::fcntl(mfd.get(), F_ADD_SEALS, F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_WRITE | F_SEAL_SEAL) <
-      0) {
-    return false;
-  }
-
-  // Comment out to disable memfd usage easier to inspect cheat without it
-  final_exec_fd = std::move(mfd);
-
-  // Create the CGroup
-  auto        cgroup_name = cgroup_parent.getName() + "/game";
-  sys::CGroup cgroup      = sys::CGService::create(cgroup_name);
-
-  this->m_ctx.emplace(Context{.cg             = std::move(cgroup),
-                              .executable_fd  = std::move(final_exec_fd),
-                              .working_dir_fd = std::move(work_fd),
-                              .uid            = uid,
-                              .gid            = sys::IdentityService::getGID(uid),
-                              .game_name      = entry->binary.filename().string(),
-                              .envp           = sys::IdentityService::getUserEnvironment(uid),
-                              .argv           = {absBinPath.string()}});
-
-  return true;
+  // Return the verified pair
+  return std::make_tuple(std::move(*work_fd_res), std::move(*exec_fd_res), absBinPath.string());
 }
 
-void Runner::launch(const Context &ctx, EPollManager &manager) {
-  if (!this->canLaunch()) {
-    std::cerr << "[INFO] setup() called while previous child is active; "
-                 "stopping old child.\n";
-    return;
+Result<sys::FD> Runner::create_sealed_memfd(const FD &disk_exec_fd) {
+  // 1. Get the raw FD from the disk handle
+  if (!disk_exec_fd) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
 
-  uint64_t          pid_fd_out = 0;
-  struct clone_args cl_args    = {};
-  cl_args.exit_signal          = SIGCHLD;
-  cl_args.flags                = CLONE_INTO_CGROUP | CLONE_PIDFD;
-  cl_args.pidfd                = reinterpret_cast<uintptr_t>(&pid_fd_out);
-  cl_args.cgroup               = static_cast<uint64_t>(ctx.cg.get_fd());
+  // 2. Create the anonymous memfd
+  auto mfd = FD::adopt(::memfd_create(SEALED_MEMFD_NAME, MFD_CLOEXEC | MFD_ALLOW_SEALING));
+  if (!mfd) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
 
-  uid_t uid = ctx.uid;
-  gid_t gid = ctx.gid;
+  struct stat file_info;
+  if (::fstat(disk_exec_fd.get(), &file_info) < 0) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
 
-  // Prepare argv: [game_name, bin_path, ...args]
+  // 3. Move data to RAM
+  if (::sendfile(mfd->get(), disk_exec_fd.get(), nullptr, file_info.st_size) != file_info.st_size) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
+
+  // 4. Seal it (Prevent tampering)
+  if (::fcntl(mfd->get(), F_ADD_SEALS, F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_WRITE | F_SEAL_SEAL) <
+      0) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
+
+  return std::move(mfd);
+}
+
+Result<void> Runner::start(sys::EPollManager &manager) {
+  if (!m_ctx.has_value()) {
+    return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+  }
+
+  const auto &ctx = *m_ctx;
+
+  if (!canLaunch()) {
+    return std::unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  }
+
+  const auto &cgroup_res = ctx.cg.getFD();
+  if (!cgroup_res) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+  }
+
+  // 1. Prepare Arguments & Pipe
   const std::vector<char *> argv = CInterop::toCStringVector(ctx.argv);
   const std::vector<char *> envp = CInterop::toCStringVector(ctx.envp);
 
+  int pipe_fds[2];
+  if (::pipe2(pipe_fds, O_CLOEXEC) == -1) {
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
+
+  auto read_pipe  = FD::adopt(pipe_fds[0]);
+  auto write_pipe = FD::adopt(pipe_fds[1]);
+  if (!read_pipe || !write_pipe) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+  }
+
+  // 2. Setup Clone Args
+  uint64_t          pid_fd_out = 0;
+  struct clone_args cl_args    = {
+      .flags       = CLONE_INTO_CGROUP | CLONE_PIDFD,
+      .pidfd       = reinterpret_cast<uintptr_t>(&pid_fd_out),
+      .exit_signal = SIGCHLD,
+      .cgroup      = static_cast<uint64_t>(*cgroup_res),
+  };
+
+  // 3. The Fork/Clone
   long result = ::syscall(SYS_clone3, &cl_args, sizeof(cl_args));
 
   if (result == -1) {
-    std::cerr << "Kernel rejected clone3! " << std::strerror(errno) << " (Code: " << errno << ")"
-              << std::endl;
-    return;
+    return std::unexpected(std::error_code(errno, std::system_category()));
   }
 
   if (result == 0) {
-    // We are in the CHILD
+    /** --- CHILD PROCESS PATH --- **/
+    read_pipe->close();
 
-    ::prctl(PR_SET_PDEATHSIG, SIGKILL);
-
-    // Security Lockdown
-    auto exit_err = [](LauncherStatus code) { ::_exit(static_cast<int>(code)); };
-
-    if (::setgroups(0, nullptr) < 0) {
-      exit_err(LauncherStatus::SetGroupsFailed);
+    // execute_child_setup calls fexecve and only returns on failure.
+    // Inside, it reports errors via write_pipe.
+    if (write_pipe) {
+      this->execute_child_setup(write_pipe->get(), argv, envp);
     }
-
-    if (::setresgid(gid, gid, gid) < 0) {
-      exit_err(LauncherStatus::SetGidFailed);
-    }
-
-    if (::setresuid(uid, uid, uid) < 0) {
-      exit_err(LauncherStatus::SetUidFailed);
-    }
-
-    if (::fchdir(ctx.working_dir_fd.get()) < 0) {
-      exit_err(LauncherStatus::ChdirFailed);
-    }
-
-    if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
-      exit_err(LauncherStatus::NoNewPrivsFailed);
-    }
-
-    if (::prctl(PR_SET_DUMPABLE, 0) < 0) {
-      exit_err(LauncherStatus::SetDumpableFailed);
-    }
-
-    ::fexecve(ctx.executable_fd.get(), argv.data(), envp.data());
-
-    // If we reach here, exec failed
-    exit_err(LauncherStatus::ExecveFailed);
+    ::_exit(EXIT_FAILURE);
   }
 
-  this->m_gpid = static_cast<pid_t>(result);
+  /** --- PARENT PROCESS PATH --- **/
+  // CRITICAL: Close write end immediately so the read below can reach EOF on child success
+  write_pipe->close();
 
-  if (pid_fd_out > 0) {
-    this->m_fd.reset(static_cast<int>(pid_fd_out));
+  int child_errno = 0;
 
-    // Create the binding so stop() is called automatically on exit
-    if (!this->createEPollBinding(manager)) {
-      std::cerr << "[ERROR] Failed to bind process exit event to EPoll." << std::endl;
-    }
+  if (!read_pipe) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
+  // Blocks here until child execs (closing pipe via O_CLOEXEC) or writes an error
+  ssize_t bytes = ::read(read_pipe->get(), &child_errno, sizeof(child_errno));
+
+  if (bytes > 0) {
+    // The child sent an error code before it could exec
+    return std::unexpected(std::error_code(child_errno, std::system_category()));
+  }
+
+  // Success! Process is now executing the target binary.
+  m_gpid = static_cast<pid_t>(result);
+
+  if (auto res = FD::adopt(static_cast<int>(pid_fd_out))) {
+    m_fd = std::move(*res);
+    // Optional: manager.register(m_fd.get(), ...);
+  }
+
+  return {};
 }
 
-bool Runner::createEPollBinding(EPollManager &manager) {
-  // Safety check: don't create if no ring buffer, no initilization and already
-  // have a binding
-  if (m_binding != nullptr) {
-    return false;
+void Runner::execute_child_setup(int error_fd, const std::vector<char *> &argv,
+                                 const std::vector<char *> &envp) {
+
+  if (!m_ctx.has_value()) {
+    ::_exit(EXIT_FAILURE);
   }
 
-  if (!m_fd.isValid()) {
-    return false; // Libbpf couldn't provide a pollable file descriptor
-  }
-
-  auto on_event = [](void *ctx, uint32_t events) {
-    auto *self = static_cast<Runner *>(ctx);
-    if (self != nullptr) {
-      self->stop();
-    }
-    // We only care about data being ready (EPOLLIN)
-    // or the buffer being closed (ERR/HUP)
+  auto report_and_exit = [&](int err) {
+    [[maybe_unused]] auto unused = ::write(error_fd, &err, sizeof(err));
+    ::_exit(EXIT_FAILURE);
   };
 
-  m_binding = std::make_unique<EPollBinding>(&manager, m_fd.get(), this, on_event);
-
-  if (!m_binding->subscribe(EPOLLIN)) {
-
-    m_binding.reset();
-    return false;
+  // Linear sequence of sandbox constraints
+  if (::prctl(PR_SET_PDEATHSIG, SIGKILL) < 0) {
+    report_and_exit(errno);
+  }
+  if (::setgroups(0, nullptr) < 0) {
+    report_and_exit(errno);
+  }
+  if (::setresgid(m_ctx->gid, m_ctx->gid, m_ctx->gid) < 0) {
+    report_and_exit(errno);
+  }
+  if (::setresuid(m_ctx->uid, m_ctx->uid, m_ctx->uid) < 0) {
+    report_and_exit(errno);
   }
 
-  return true;
-}
-
-void Runner::start(sys::EPollManager &manager) {
-  if (this->m_ctx.has_value()) {
-    this->launch(*this->m_ctx, manager);
+  if (::fchdir(m_ctx->working_dir_fd.get()) < 0) {
+    report_and_exit(errno);
   }
+  if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
+    report_and_exit(errno);
+  }
+  if (::prctl(PR_SET_DUMPABLE, 0) < 0) {
+    report_and_exit(errno);
+  }
+
+  ::fexecve(m_ctx->executable_fd.get(), argv.data(), envp.data());
+
+  // If we're here, exec failed
+  report_and_exit(errno);
 }
 
 void Runner::stop() {
   // 1. Kill everything in the CGroup first
-  m_binding.reset();
-
-  if (this->m_ctx.has_value() && this->m_ctx->cg) {
-    bool res = sys::CGService::killProcs(this->m_ctx->cg);
+  if (m_ctx.has_value() && this->m_ctx->cg) {
+    auto res = CGService::killProcs(m_ctx->cg);
     if (!res) {
-      std::cout << "Process termination on cgroup failed" << std::endl;
+      std::clog << "[OdinSight Runner] Warning: CGroup kill failed: " << res.error().message()
+                << std::endl;
     }
   }
 
-  // 2. Clean up the leader process tracking
   if (m_fd.isValid()) {
     siginfo_t info{};
-    // Even though cgroup.kill was sent, we still need to reap the
-    // zombie of the process we personally forked.
-    if (::waitid(P_PIDFD, m_fd.get(), &info, WEXITED) == 0) {
-      if (info.si_pid != 0) {
-        std::clog << "[OdinSight] Game exited with status: " << info.si_status << std::endl;
-      }
+    // We try to reap. We don't care if it fails, but we only log if it works.
+    if (::waitid(P_PIDFD, m_fd.get(), &info, WEXITED) == 0 && info.si_pid != 0) {
+      bool normalExit = (info.si_code == CLD_EXITED);
+      std::clog << "[OdinSight Runner] Game (PID " << info.si_pid << ") "
+                << (normalExit ? "exited normally: " : "terminated by signal: ") << info.si_status
+                << "\n";
     }
   }
 
-  this->m_gpid = -1;
-  this->m_fd.reset();
-  this->m_ctx.reset(); // Assuming this destroys/cleans up the CGroup
-  std::cout << "stopped game and cleaned resources" << std::endl;
+  clearRuntimeState();
+  this->m_ctx.reset();
+
+  std::clog << "[OdinSight - Runner] Resources cleaned." << std::endl;
 }
 
 bool Runner::canLaunch() {
   // If the FD isn't valid, no process is being tracked.
-  if (!m_fd.isValid()) {
+  if (!m_fd) {
     return true;
   }
 
   siginfo_t info{};
   // WNOWAIT is key here: it checks if the process is dead WITHOUT reaping it.
   // This allows the actual stop() function to do the formal reaping later.
-  int       res = ::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG | WNOWAIT);
+
+  int res = ::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG | WNOWAIT);
 
   if (res == 0 && info.si_pid != 0) {
-    // The process has exited (or was killed).
-    // Trigger stop() to clean up CGroups and FDs.
-    this->stop();
+    clearRuntimeState();
     return true;
   }
 
   return false;
+}
+
+void Runner::clearRuntimeState() {
+  m_gpid = -1;
+  m_fd   = FD::empty();
 }
 
 const Context *Runner::getSessionInfo() const { return this->m_ctx ? &(*this->m_ctx) : nullptr; }

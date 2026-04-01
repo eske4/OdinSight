@@ -3,14 +3,12 @@
 #include <expected>
 #include <sys/epoll.h>
 #include <sys/types.h>
+#include <system_error>
 #include <unordered_map>
 
 #include "system/FD.hpp"
 
 namespace OdinSight::System {
-
-/** --- Error Types --- **/
-enum class EPollError : uint8_t { Interrupted = 0, SysCallFailed = 1, Timeout = 2, InvalidFD = 3 };
 
 // Forward declaration
 class EPollBinding;
@@ -20,6 +18,8 @@ class EPollManager {
 
 private:
   /** --- Private Type Aliases & Constants --- **/
+  template <typename T> using Result = std::expected<T, std::error_code>;
+
   using SubscriptionMap = std::unordered_map<int, EPollBinding *>;
 
   static constexpr int MAX_EVENTS  = 64;
@@ -32,13 +32,15 @@ private:
   bool            m_running{true};
 
   /** --- Internal Interface (Called by EPollBinding) --- **/
-  explicit EPollManager(FD &&file_descriptor) : m_epoll_fd(std::move(file_descriptor)) {}
+  explicit EPollManager(FD &&epoll_fd, FD &&sig_fd)
+      : m_epoll_fd(std::move(epoll_fd)), m_sig_fd(std::move(sig_fd)) {}
 
-  [[nodiscard]] bool subscribe(int file_descriptor, EPollBinding *binding, uint32_t events);
-  [[nodiscard]] bool unsubscribe(int file_descriptor, EPollBinding *binding);
+  [[nodiscard]] Result<void> subscribe(int file_descriptor, EPollBinding *binding, uint32_t events);
+  [[nodiscard]] Result<void> unsubscribe(int file_descriptor, EPollBinding *binding);
 
 public:
   /** --- Lifecycle --- **/
+  EPollManager() = delete;
   ~EPollManager();
 
   // Rule of Five: No copying, Move allowed
@@ -51,13 +53,13 @@ public:
   bool isRunning() const { return m_running; }
 
   /** --- Factory & Core Logic --- **/
-  static std::expected<EPollManager, EPollError> create();
+  static Result<EPollManager> create();
 
   /**
    * @brief Wait for events on registered file descriptors.
    * @return Number of events processed, or an EPollError.
    */
-  std::expected<size_t, EPollError> poll(int timeout_ms = -1);
+  Result<size_t> poll(int timeout_ms = -1);
 };
 
 } // namespace OdinSight::System

@@ -1,86 +1,80 @@
 #include "CGroupService.hpp"
 #include "system/CGroup.hpp"
 
-#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
-#include <filesystem>
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace fs = std::filesystem;
+namespace fs                       = std::filesystem;
+template <typename T> using Result = std::expected<T, std::error_code>;
 
 namespace OdinSight::System {
 
-CGroup CGService::create(std::string_view name) {
-  if (name.empty()) {
-    return {};
+Result<void> CGService::writeCG(const CGroup &cgroup, const std::string &file_name,
+                                std::string_view value) {
+  // 1. Basic validation of the handle
+  if (!cgroup.getFD().isValid()) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
 
-  // 1. Construct path (using full namespace for header/source safety)
-  fs::path target_path = std::filesystem::path("/sys/fs/cgroup") / name;
-
-  // 2. Create the directories
-  std::error_code err_code;
-  fs::create_directories(target_path, err_code);
-  if (err_code) {
-    return {};
+  if (file_name.empty()) {
+    return std::unexpected(std::make_error_code(std::errc::invalid_argument));
   }
 
-  // 3. Open the Directory FD
-  FD cg_fd(target_path.string(), O_RDONLY | O_DIRECTORY);
-  if (!cg_fd.isValid()) {
-    return {};
+  // 2. Open relative to the CGroup directory FD
+  // We use your FD::openAt which likely uses RESOLVE_BENEATH for security.
+  auto open_res = FD::openAt(cgroup.getFD(), file_name, O_WRONLY | O_CLOEXEC);
+
+  if (!open_res) {
+    // Propagate why we couldn't open the file (e.g., file_name doesn't exist)
+    return std::unexpected(open_res.error());
   }
 
-  // 4. Use the helper function to get the ID
-  uint64_t cg_id = cg_fd.getID();
+  // 3. Perform the write syscall
+  // We use the underlying FD from the expected object
+  auto &raw_fd = open_res.value();
+  if (!raw_fd) {
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+  }
 
-  // 5. Assemble and return
-  // Note: cg_fd is moved here, which is fine because getID only takes a const
-  // reference
-  return CGroup(std::string(name), target_path, std::move(cg_fd), cg_id);
+  ssize_t bytes_written = ::write(raw_fd.get(), value.data(), value.size());
+
+  // 4. Validate the write result
+  if (bytes_written < 0) {
+    // Return the actual system error (e.g., EINVAL if the kernel dislikes the value)
+    return std::unexpected(std::error_code(errno, std::system_category()));
+  }
+
+  if (static_cast<size_t>(bytes_written) != value.size()) {
+    // Partial writes in CGroup virtual files are rare but technically errors
+    return std::unexpected(std::make_error_code(std::errc::io_error));
+  }
+
+  return {}; // Success
 }
-
-bool CGService::writeCG(const CGroup &cgroup, const std::string &file_name,
-                        std::string_view value) {
-  if (!cgroup.get_fd().isValid() || file_name.empty()) {
-    return false;
-  }
-
-  // Open relative to directory FD
-  FD file_descriptor;
-
-  file_descriptor.reset(::openat(cgroup.get_fd().get(), file_name.c_str(), O_WRONLY | O_CLOEXEC));
-  if (file_descriptor.get() < 0) {
-    return false;
-  }
-
-  ssize_t bytes_written = ::write(file_descriptor.get(), value.data(), value.size());
-
-  return bytes_written == static_cast<ssize_t>(value.size());
-}
-
 // Resource Limits (Stateless & Static)
-bool CGService::setMemoryLimit(const CGroup &cgroup, size_t max_bytes) {
+Result<void> CGService::setMemoryLimit(const CGroup &cgroup, size_t max_bytes) {
   return writeCG(cgroup, "memory.max", std::to_string(max_bytes));
 }
 
-bool CGService::setProcLimit(const CGroup &cgroup, int max_pids) {
+Result<void> CGService::setProcLimit(const CGroup &cgroup, int max_pids) {
   return writeCG(cgroup, "pids.max", std::to_string(max_pids));
 }
 
-bool CGService::setCpuLimit(const CGroup &cgroup, std::string_view weight) {
+Result<void> CGService::setCpuLimit(const CGroup &cgroup, std::string_view weight) {
   // weight is usually 1-10000, default 100
   return writeCG(cgroup, "cpu.weight", weight);
 }
 
-bool CGService::enableSubtreeControllers(const CGroup &parent_cgroup) {
+Result<void> CGService::enableSubtreeControllers(const CGroup &parent_cgroup) {
   // Enable the most common controllers for children
   // Note: '+' prefix is required in subtree_control
   return writeCG(parent_cgroup, "cgroup.subtree_control", "+cpuset +cpu +io +memory +pids");
 }
 
-bool CGService::killProcs(const CGroup &cgroup) { return writeCG(cgroup, "cgroup.kill", "1"); }
+Result<void> CGService::killProcs(const CGroup &cgroup) {
+  return writeCG(cgroup, "cgroup.kill", "1");
+}
 
 } // namespace OdinSight::System

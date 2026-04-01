@@ -16,24 +16,40 @@ namespace OdinSight::Daemon::Control {
 namespace sys    = OdinSight::System;
 namespace common = OdinSight::Common;
 
-CommandListener::CommandListener(std::string path, Validator validator, Handler handler)
-    : m_path(std::move(path)), m_validator(validator ? std::move(validator) : defaultValidator),
-      m_handler(handler ? std::move(handler) : defaultHandler) {}
+template <typename T> using Result = std::expected<T, std::error_code>;
+using DaemonCommand                = OdinSight::Common::DaemonCommand;
+using CommadPacket                 = OdinSight::Common::CommandPacket;
 
 CommandListener::~CommandListener() { stop(); }
 
-bool CommandListener::start() {
-  stop();
+Result<std::unique_ptr<CommandListener>> CommandListener::create() {
+  // 1. Define the internal defaults
+  std::string defaultPath    = Common::COMMAND_SOCKET_PATH;
+  Handler     defaultHandler = nullptr;
 
-  // Resetting the managed FD
-  m_serverFD.reset(::socket(AF_UNIX, SOCK_STREAM, 0));
-  if (m_serverFD.get() < 0) {
-    return false;
+  // 2. Instantiate via the private constructor
+  auto instance = std::unique_ptr<CommandListener>(
+      new CommandListener(std::move(defaultPath), std::move(defaultHandler)));
+
+  // 3. Safety Check: If for some reason 'new' failed (rare but possible)
+  if (!instance) {
+    return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
   }
 
-  if (!setNonBlocking(m_serverFD)) {
-    closeServer();
-    return false;
+  // 4. Wrap and return
+  return instance;
+}
+
+Result<void> CommandListener::start() {
+  stop();
+
+  // 1. Create Socket
+  if (auto server_fd =
+          FD::adopt(::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0))) {
+    m_serverFD = std::move(*server_fd);
+  }
+  if (!m_serverFD) {
+    return std::unexpected(make_error_code(static_cast<std::errc>(errno)));
   }
 
   sockaddr_un addr{};
@@ -43,37 +59,33 @@ bool CommandListener::start() {
 
   if (m_path.size() + 1 > sizeof(addr.sun_path)) {
     closeServer();
-    return false;
+    return std::unexpected(make_error_code(std::errc::invalid_argument));
   }
 
   std::memcpy(addr.sun_path + 1, m_path.c_str(), m_path.size());
 
   socklen_t addrLen = offsetof(struct sockaddr_un, sun_path) + 1 + m_path.size();
 
+  // 3. Bind
   const void     *raw_ptr    = &addr;
   const sockaddr *socket_ptr = static_cast<const sockaddr *>(raw_ptr);
-
   if (::bind(m_serverFD.get(), socket_ptr, addrLen) < 0) {
     closeServer();
-    return false;
+    return std::unexpected(std::make_error_code(static_cast<std::errc>(errno)));
   }
 
+  // 4. Listen
   if (::listen(m_serverFD.get(), MAX_PENDING_CONNECTIONS) < 0) {
     closeServer();
-    return false;
+    return std::unexpected(std::make_error_code(static_cast<std::errc>(errno)));
   }
 
-  return true;
+  return {};
 }
 
 void CommandListener::handleEvents(uint32_t events) {
   // 1. Check for Critical Errors on the Server Socket
   if ((events & (EPOLLERR | EPOLLHUP)) != 0U) {
-    // This usually means the socket was closed externally or a kernel error
-    // occurred. In an anti-cheat, we should probably attempt to restart the
-    // listener.
-
-    start();
     return;
   }
 
@@ -82,11 +94,13 @@ void CommandListener::handleEvents(uint32_t events) {
   }
 
   // 1. ALWAYS accept the connection to clear the kernel backlog
-  FD clientFD;
-  clientFD.reset(::accept(m_serverFD.get(), nullptr, nullptr));
-  if (clientFD.get() < 0) {
+  auto client_fd_res =
+      FD::adopt(::accept4(m_serverFD.get(), nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC));
+  if (!client_fd_res) {
     return;
   }
+
+  auto &client_fd = client_fd_res.value();
 
   // 2. NOW check rate limiting. If too fast, the FD goes out of scope and closes.
   auto now = std::chrono::steady_clock::now();
@@ -101,34 +115,29 @@ void CommandListener::handleEvents(uint32_t events) {
 
   // 3. Set small buffer to prevent memory-based DoS
   int smallBuf = sizeof(CommandPacket);
-  ::setsockopt(clientFD.get(), SOL_SOCKET, SO_RCVBUF, &smallBuf, sizeof(smallBuf));
+  ::setsockopt(client_fd.get(), SOL_SOCKET, SO_RCVBUF, &smallBuf, sizeof(smallBuf));
 
-  processClient(clientFD);
-}
-
-void CommandListener::processClient(const FD &file_descriptor) {
   CommandPacket packet{};
 
-  ssize_t bytesReceived = ::recv(file_descriptor.get(), &packet, sizeof(packet), MSG_DONTWAIT);
+  ssize_t bytesReceived = ::recv(client_fd.get(), &packet, sizeof(packet), MSG_DONTWAIT);
 
-  if (bytesReceived == static_cast<ssize_t>(sizeof(packet))) {
-    // SECURITY: Validate ranges BEFORE doing any logic
-    uint32_t rawCmd    = static_cast<uint32_t>(packet.command_id);
-    uint32_t rawGameId = static_cast<uint32_t>(packet.game_id);
+  if (bytesReceived != static_cast<ssize_t>(sizeof(packet))) {
+    return;
+  }
 
-    if (rawGameId >= static_cast<uint32_t>(common::GameID::NUM_GAMES)) {
-      return;
-    }
+  uint32_t rawCmd    = static_cast<uint32_t>(packet.command_id);
+  uint32_t rawGameId = static_cast<uint32_t>(packet.game_id);
 
-    if (rawCmd >= static_cast<uint32_t>(common::DaemonCommand::NUM_COMMANDS)) {
-      return;
-    }
+  if (rawGameId >= static_cast<uint32_t>(common::GameID::NUM_GAMES)) {
+    return;
+  }
 
-    if (m_validator && m_validator(packet)) {
-      if (m_handler) {
-        m_handler(packet);
-      }
-    }
+  if (rawCmd >= static_cast<uint32_t>(common::DaemonCommand::NUM_COMMANDS)) {
+    return;
+  }
+
+  if (m_handler) {
+    m_handler(packet);
   }
 }
 
@@ -136,15 +145,7 @@ void CommandListener::stop() { closeServer(); }
 
 void CommandListener::closeServer() {
   // Assuming sys::FD::release() or reset() handles the close() call
-  m_serverFD.reset();
-}
-
-bool CommandListener::setNonBlocking(const sys::FD &file_descriptor) {
-  int flags = ::fcntl(file_descriptor.get(), F_GETFL, 0);
-  if (flags == -1) {
-    return false;
-  }
-  return ::fcntl(file_descriptor.get(), F_SETFL, flags | O_NONBLOCK) == 0;
+  m_serverFD.close();
 }
 
 // In UnixCommandDaemon.hpp
