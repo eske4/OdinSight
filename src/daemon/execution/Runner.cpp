@@ -1,8 +1,8 @@
 #include "Runner.hpp"
 #include "CGroupService.hpp"
-#include "EPollManager.hpp"
 #include "GameWhitelist.hpp"
 #include "IdentityService.hpp"
+#include "common/Result.hpp"
 #include "system/FD.hpp"
 #include "utils/StringUtil.hpp"
 
@@ -30,20 +30,19 @@ namespace OdinSight::Daemon::Launcher {
 namespace sys         = OdinSight::System;
 namespace CInterop    = OdinSight::Util::CInterop;
 namespace fs          = std::filesystem;
-using EPollBinding    = OdinSight::System::EPollBinding;
 using FD              = OdinSight::System::FD;
 using IdentityService = OdinSight::System::IdentityService;
 using CGService       = OdinSight::System::CGService;
 
-template <typename T> using Result = std::expected<T, std::error_code>;
+using Error = Odin::Error;
 
-Result<std::unique_ptr<Runner>> Runner::create() {
+Odin::Result<std::unique_ptr<Runner>> Runner::create() {
   // 1. Allocate on the heap.
   auto instance = std::unique_ptr<Runner>(new Runner());
 
   // 2. Safety check for allocation failure (though rare in modern Linux)
   if (!instance) {
-    return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
+    return std::unexpected(Odin::Error::Logic(lctx, "create", "Memory allocation failed"));
   }
 
   // 3. Initialize the members via the pointer
@@ -55,10 +54,11 @@ Result<std::unique_ptr<Runner>> Runner::create() {
   return instance;
 }
 
-Result<void> Runner::setup(const GameID &game_id, std::shared_ptr<CGroup> &cgroup_parent) {
+Odin::Result<void> Runner::setup(const GameID& game_id, std::shared_ptr<CGroup>& cgroup_parent) {
   // 1. Validation & State Reset
   if (!this->canLaunch()) {
-    return std::unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return std::unexpected(
+        Error::Logic(lctx, "setup", "Runner is already active or in a bad state"));
   }
   stop();
   m_gpid = -1;
@@ -66,34 +66,28 @@ Result<void> Runner::setup(const GameID &game_id, std::shared_ptr<CGroup> &cgrou
   // 2. Resolve Game & Identity (The "Who" and "What")
   auto entry = findGame(game_id);
   if (!entry) {
-    return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
+    return std::unexpected(Error::Logic(lctx, "setup", "Game not found in whitelist"));
   }
 
   auto uid_res = IdentityService::getUID();
-  if (!uid_res) {
-    return std::unexpected(uid_res.error());
-  }
+  if (!uid_res) { return std::unexpected(Error::Enrich(lctx, "resolve_uid", uid_res.error())); }
 
   auto gid_res = IdentityService::getGID(*uid_res);
-  if (!gid_res) {
-    return std::unexpected(gid_res.error());
-  }
+  if (!gid_res) { return std::unexpected(Error::Enrich(lctx, "resolve_gid", gid_res.error())); }
 
   auto env_res = IdentityService::getUserEnvironment(*uid_res);
-  if (!env_res) {
-    return std::unexpected(env_res.error()); // Fixed your flipped check
-  }
+  if (!env_res) { return std::unexpected(Error::Enrich(lctx, "resolve_env", env_res.error())); }
 
   // 3. System Resource Allocation (The "Where")
   // Note: Pass just the child name "game" if createAt uses mkdirat
   auto cgroup_res = CGroup::createAt(cgroup_parent, "game");
   if (!cgroup_res) {
-    return std::unexpected(cgroup_res.error());
+    return std::unexpected(Error::Enrich(lctx, "create_cgroup", cgroup_res.error()));
   }
 
   auto paths_res = resolve_paths(*entry, *uid_res);
   if (!paths_res) {
-    return std::unexpected(paths_res.error());
+    return std::unexpected(Error::Enrich(lctx, "resolve_paths", paths_res.error()));
   }
 
   auto [work_fd, disk_exec_fd, absBinPath] = std::move(*paths_res);
@@ -102,9 +96,7 @@ Result<void> Runner::setup(const GameID &game_id, std::shared_ptr<CGroup> &cgrou
   FD final_exec_fd = std::move(disk_exec_fd);
   {
     auto ghost_res = create_sealed_memfd(final_exec_fd);
-    if (!ghost_res) {
-      return std::unexpected(ghost_res.error());
-    }
+    if (!ghost_res) { return std::unexpected(Error::Enrich(lctx, "ghosting", ghost_res.error())); }
     ::posix_fadvise(final_exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED);
 
     final_exec_fd = std::move(*ghost_res);
@@ -123,13 +115,17 @@ Result<void> Runner::setup(const GameID &game_id, std::shared_ptr<CGroup> &cgrou
   return {};
 }
 
-Result<std::tuple<FD, FD, std::string>> Runner::resolve_paths(const GameEntry &entry, uid_t uid) {
+Odin::Result<std::tuple<FD, FD, std::string>> Runner::resolve_paths(const GameEntry& entry,
+                                                                    uid_t            uid) {
   // 1. Path Expansion
   auto work_path_res = sys::IdentityService::expandUserPath(entry.dataDir.string(), uid);
   auto bin_path_res  = sys::IdentityService::expandUserPath(entry.binary.string(), uid);
 
-  if (!work_path_res || !bin_path_res) {
-    return std::unexpected(work_path_res ? bin_path_res.error() : work_path_res.error());
+  if (!work_path_res) {
+    return std::unexpected(Error::Enrich(lctx, "expand_work_path", work_path_res.error()));
+  }
+  if (!bin_path_res) {
+    return std::unexpected(Error::Enrich(lctx, "expand_bin_path", bin_path_res.error()));
   }
 
   std::filesystem::path absWorkPath = *work_path_res;
@@ -142,96 +138,89 @@ Result<std::tuple<FD, FD, std::string>> Runner::resolve_paths(const GameEntry &e
   // 2. Resolve Working Directory
   auto work_parent_res = FD::open(absWorkPath.parent_path().string(), O_PATH | O_DIRECTORY);
   if (!work_parent_res) {
-    return std::unexpected(work_parent_res.error());
+    return std::unexpected(Error::Enrich(lctx, "open_work_parent", work_parent_res.error()));
   }
 
   // Pass the Result's value (the FD object) directly to openAt
   auto work_fd_res = FD::openAt(*work_parent_res, absWorkPath.filename().string(),
                                 O_PATH | O_DIRECTORY | O_CLOEXEC);
   if (!work_fd_res) {
-    return std::unexpected(work_fd_res.error());
+    return std::unexpected(Error::Enrich(lctx, "open_work_dir", work_fd_res.error()));
   }
 
   // 3. Resolve Binary
   auto bin_dir_res = FD::open(absBinPath.parent_path().string(), O_PATH | O_DIRECTORY);
   if (!bin_dir_res) {
-    return std::unexpected(bin_dir_res.error());
+    return std::unexpected(Error::Enrich(lctx, "open_bin_parent", bin_dir_res.error()));
   }
 
   // Pass the Result's value (the FD object) directly to openAt
   auto exec_fd_res = FD::openAt(*bin_dir_res, absBinPath.filename().string(), O_RDONLY | O_CLOEXEC);
   if (!exec_fd_res) {
-    return std::unexpected(exec_fd_res.error());
+    return std::unexpected(Error::Enrich(lctx, "open_bin_file", exec_fd_res.error()));
   }
 
   // Return the verified pair
   return std::make_tuple(std::move(*work_fd_res), std::move(*exec_fd_res), absBinPath.string());
 }
 
-Result<sys::FD> Runner::create_sealed_memfd(const FD &disk_exec_fd) {
-  // 1. Get the raw FD from the disk handle
-  if (!disk_exec_fd) {
-    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+Odin::Result<FD> Runner::create_sealed_memfd(const FD& disk_exec_fd) {
+  if (!disk_exec_fd) { return std::unexpected(Error::Logic(lctx, "memfd", "Invalid disk FD")); }
+
+  auto mfd_raw = ::memfd_create("odin_ghost", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+  if (mfd_raw < 0) { return std::unexpected(Error::System(lctx, "memfd_create", errno)); }
+
+  auto mfd = FD::adopt(mfd_raw);
+  if (!mfd) { return std::unexpected(Error::Enrich(lctx, "memfd_adopt", mfd.error())); }
+
+  struct stat st;
+  if (::fstat(disk_exec_fd.get(), &st) < 0) {
+    return std::unexpected(Error::System(lctx, "fstat_exec", errno));
   }
 
-  // 2. Create the anonymous memfd
-  auto mfd = FD::adopt(::memfd_create(SEALED_MEMFD_NAME, MFD_CLOEXEC | MFD_ALLOW_SEALING));
-  if (!mfd) {
-    return std::unexpected(std::error_code(errno, std::system_category()));
+  if (::sendfile(mfd->get(), disk_exec_fd.get(), nullptr, st.st_size) != st.st_size) {
+    return std::unexpected(Error::System(lctx, "sendfile", errno));
   }
 
-  struct stat file_info;
-  if (::fstat(disk_exec_fd.get(), &file_info) < 0) {
-    return std::unexpected(std::error_code(errno, std::system_category()));
-  }
-
-  // 3. Move data to RAM
-  if (::sendfile(mfd->get(), disk_exec_fd.get(), nullptr, file_info.st_size) != file_info.st_size) {
-    return std::unexpected(std::error_code(errno, std::system_category()));
-  }
-
-  // 4. Seal it (Prevent tampering)
   if (::fcntl(mfd->get(), F_ADD_SEALS, F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_WRITE | F_SEAL_SEAL) <
       0) {
-    return std::unexpected(std::error_code(errno, std::system_category()));
+    return std::unexpected(Error::System(lctx, "memfd_seal", errno));
   }
 
-  return std::move(mfd);
+  return std::move(*mfd);
 }
 
-Result<void> Runner::start(sys::EPollManager &manager) {
+Odin::Result<void> Runner::start() {
   if (!m_ctx.has_value()) {
-    return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    return std::unexpected(Error::Logic(lctx, "start", "No context prepared"));
   }
 
-  const auto &ctx = *m_ctx;
+  const auto& ctx = *m_ctx;
 
   if (!canLaunch()) {
-    return std::unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return std::unexpected(Error::Logic(lctx, "start", "Process already running"));
   }
 
-  const auto &cgroup_res = ctx.cg->getFD();
-  if (!cgroup_res) {
-    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
-  }
+  const auto& cgroup_res = ctx.cg->getFD();
+  if (!cgroup_res) { return std::unexpected(Error::Logic(lctx, "start", "Invalid CGroup FD")); }
 
   // 1. Prepare Arguments & Pipe
-  const std::vector<char *> argv = CInterop::toCStringVector(ctx.argv);
-  const std::vector<char *> envp = CInterop::toCStringVector(ctx.envp);
+  const std::vector<char*> argv = CInterop::toCStringVector(ctx.argv);
+  const std::vector<char*> envp = CInterop::toCStringVector(ctx.envp);
 
   int pipe_fds[2];
   if (::pipe2(pipe_fds, O_CLOEXEC) == -1) {
-    return std::unexpected(std::error_code(errno, std::system_category()));
+    return std::unexpected(Error::System(lctx, "pipe_create", errno));
   }
 
   auto read_pipe  = FD::adopt(pipe_fds[0]);
   auto write_pipe = FD::adopt(pipe_fds[1]);
   if (!read_pipe || !write_pipe) {
-    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+    return std::unexpected(Error::Logic(lctx, "start", "Failed to adopt pipe FDs"));
   }
 
   // 2. Setup Clone Args
-  uint64_t          pid_fd_out = 0;
+  uint64_t          pid_fd_out = static_cast<uint64_t>(-1);
   struct clone_args cl_args    = {
       .flags       = CLONE_INTO_CGROUP | CLONE_PIDFD,
       .pidfd       = reinterpret_cast<uintptr_t>(&pid_fd_out),
@@ -242,9 +231,7 @@ Result<void> Runner::start(sys::EPollManager &manager) {
   // 3. The Fork/Clone
   long result = ::syscall(SYS_clone3, &cl_args, sizeof(cl_args));
 
-  if (result == -1) {
-    return std::unexpected(std::error_code(errno, std::system_category()));
-  }
+  if (result == -1) { return std::unexpected(Error::System(lctx, "clone3", errno)); }
 
   if (result == 0) {
     /** --- CHILD PROCESS PATH --- **/
@@ -252,9 +239,7 @@ Result<void> Runner::start(sys::EPollManager &manager) {
 
     // execute_child_setup calls fexecve and only returns on failure.
     // Inside, it reports errors via write_pipe.
-    if (write_pipe) {
-      this->execute_child_setup(write_pipe->get(), argv, envp);
-    }
+    if (write_pipe) { this->execute_child_setup(write_pipe->get(), argv, envp); }
     ::_exit(EXIT_FAILURE);
   }
 
@@ -262,36 +247,29 @@ Result<void> Runner::start(sys::EPollManager &manager) {
   // CRITICAL: Close write end immediately so the read below can reach EOF on child success
   write_pipe->close();
 
-  int child_errno = 0;
+  int     child_errno = 0;
+  ssize_t bytes       = ::read(read_pipe->get(), &child_errno, sizeof(child_errno));
 
-  if (!read_pipe) {
-    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
+  if (bytes == -1) {
+    int err = (errno == EINTR) ? ETIMEDOUT : errno;
+    return std::unexpected(Error::System(lctx, "pipe_read", err));
   }
-  // Blocks here until child execs (closing pipe via O_CLOEXEC) or writes an error
-  ssize_t bytes = ::read(read_pipe->get(), &child_errno, sizeof(child_errno));
-
   if (bytes > 0) {
     // The child sent an error code before it could exec
-    return std::unexpected(std::error_code(child_errno, std::system_category()));
+    return std::unexpected(Error::System(lctx, "child_exec_prep", child_errno));
   }
 
   // Success! Process is now executing the target binary.
   m_gpid = static_cast<pid_t>(result);
 
-  if (auto res = FD::adopt(static_cast<int>(pid_fd_out))) {
-    m_fd = std::move(*res);
-    // Optional: manager.register(m_fd.get(), ...);
-  }
+  if (auto res = FD::adopt(static_cast<int>(pid_fd_out))) { m_fd = std::move(res.value()); }
 
   return {};
 }
 
-void Runner::execute_child_setup(int error_fd, const std::vector<char *> &argv,
-                                 const std::vector<char *> &envp) {
-
-  if (!m_ctx.has_value()) {
-    ::_exit(EXIT_FAILURE);
-  }
+void Runner::execute_child_setup(int error_fd, const std::vector<char*>& argv,
+                                 const std::vector<char*>& envp) {
+  if (!m_ctx.has_value()) { ::_exit(EXIT_FAILURE); }
 
   auto report_and_exit = [&](int err) {
     [[maybe_unused]] auto unused = ::write(error_fd, &err, sizeof(err));
@@ -299,28 +277,14 @@ void Runner::execute_child_setup(int error_fd, const std::vector<char *> &argv,
   };
 
   // Linear sequence of sandbox constraints
-  if (::prctl(PR_SET_PDEATHSIG, SIGKILL) < 0) {
-    report_and_exit(errno);
-  }
-  if (::setgroups(0, nullptr) < 0) {
-    report_and_exit(errno);
-  }
-  if (::setresgid(m_ctx->gid, m_ctx->gid, m_ctx->gid) < 0) {
-    report_and_exit(errno);
-  }
-  if (::setresuid(m_ctx->uid, m_ctx->uid, m_ctx->uid) < 0) {
-    report_and_exit(errno);
-  }
+  if (::prctl(PR_SET_PDEATHSIG, SIGKILL) < 0) { report_and_exit(errno); }
+  if (::setgroups(0, nullptr) < 0) { report_and_exit(errno); }
+  if (::setresgid(m_ctx->gid, m_ctx->gid, m_ctx->gid) < 0) { report_and_exit(errno); }
+  if (::setresuid(m_ctx->uid, m_ctx->uid, m_ctx->uid) < 0) { report_and_exit(errno); }
 
-  if (::fchdir(m_ctx->working_dir_fd.get()) < 0) {
-    report_and_exit(errno);
-  }
-  if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
-    report_and_exit(errno);
-  }
-  if (::prctl(PR_SET_DUMPABLE, 0) < 0) {
-    report_and_exit(errno);
-  }
+  if (::fchdir(m_ctx->working_dir_fd.get()) < 0) { report_and_exit(errno); }
+  if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) { report_and_exit(errno); }
+  if (::prctl(PR_SET_DUMPABLE, 0) < 0) { report_and_exit(errno); }
 
   ::fexecve(m_ctx->executable_fd.get(), argv.data(), envp.data());
 
@@ -357,9 +321,7 @@ void Runner::stop() {
 
 bool Runner::canLaunch() {
   // If the FD isn't valid, no process is being tracked.
-  if (!m_fd) {
-    return true;
-  }
+  if (!m_fd) { return true; }
 
   siginfo_t info{};
   // WNOWAIT is key here: it checks if the process is dead WITHOUT reaping it.
@@ -380,6 +342,6 @@ void Runner::clearRuntimeState() {
   m_fd   = FD::empty();
 }
 
-const Context *Runner::getSessionInfo() const { return this->m_ctx ? &(*this->m_ctx) : nullptr; }
+const Context* Runner::getSessionInfo() const { return this->m_ctx ? &(*this->m_ctx) : nullptr; }
 
 } // namespace OdinSight::Daemon::Launcher

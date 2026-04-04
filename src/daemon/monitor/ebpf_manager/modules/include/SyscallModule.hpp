@@ -21,16 +21,16 @@ public:
   ~SyscallModule() = default;
 
   // Singleton enforcement
-  SyscallModule(const SyscallModule &)            = delete;
-  SyscallModule &operator=(const SyscallModule &) = delete;
+  SyscallModule(const SyscallModule&)            = delete;
+  SyscallModule& operator=(const SyscallModule&) = delete;
 
-  SyscallModule(SyscallModule &&)            = delete;
-  SyscallModule &operator=(SyscallModule &&) = delete;
+  SyscallModule(SyscallModule&&)            = delete;
+  SyscallModule& operator=(SyscallModule&&) = delete;
 
-  Result<void> open() override;
-  Result<void> load(int shared_rb_fd) override;
-  Result<void> attach() override;
-  void         processEvent(const ebpf_event *event, size_t size) override;
+  Odin::Result<void> open() override;
+  Odin::Result<void> load(int shared_rb_fd) override;
+  Odin::Result<void> attach() override;
+  void               processEvent(const ebpf_event* event, size_t size) override;
 };
 
 } // namespace OdinSight::Daemon::Monitor::Kernel::Modules

@@ -14,7 +14,7 @@ enum class EbpfModuleId : uint32_t {
   MODULE_COUNT        = 3
 };
 
-static constexpr size_t EBPF_MODULE_MAX = static_cast<size_t>(EbpfModuleId::MODULE_COUNT);
+static constexpr size_t EBPF_MODULES_COUNT = static_cast<size_t>(EbpfModuleId::MODULE_COUNT);
 
 struct ebpf_event {
   __u64        timestamp;

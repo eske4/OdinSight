@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/Result.hpp"
 #include "ebpf_types.h"
 #include <bpf/libbpf.h>
 #include <expected>
@@ -14,10 +15,7 @@ namespace OdinSight::Daemon::Monitor::Kernel {
  * Modules are designed to be owned by a Manager and share a common Ring Buffer.
  */
 class IEbpfModule {
-
 public:
-  template <typename T> using Result = std::expected<T, std::error_code>;
-
 private:
   EbpfModuleId m_id;
   std::string  m_name;
@@ -36,8 +34,8 @@ public:
    * @brief The Universal Factory.
    * SyscallModule must 'friend' IEbpfModule to allow this to work.
    */
-  template <typename T, typename... Args> static Result<std::unique_ptr<T>> create(Args &&...args) {
-    // We use 'new' here because std::make_unique cannot access private constructors.
+  template <typename T, typename... Args>
+  [[nodiscard]] static Odin::Result<std::unique_ptr<T>> create(Args&&... args) {
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
   }
 
@@ -47,18 +45,18 @@ public:
    */
 
   /** --- Rule of Five singleton --- **/
-  virtual ~IEbpfModule()                      = default;
+  virtual ~IEbpfModule()                     = default;
   // Disable Copying
-  IEbpfModule(const IEbpfModule &)            = delete;
-  IEbpfModule &operator=(const IEbpfModule &) = delete;
+  IEbpfModule(const IEbpfModule&)            = delete;
+  IEbpfModule& operator=(const IEbpfModule&) = delete;
 
-  IEbpfModule(IEbpfModule &&)            = delete;
-  IEbpfModule &operator=(IEbpfModule &&) = delete;
+  IEbpfModule(IEbpfModule&&)            = delete;
+  IEbpfModule& operator=(IEbpfModule&&) = delete;
 
   /** --- Lifecycle --- **/
-  virtual Result<void> open()                 = 0;
-  virtual Result<void> load(int shared_rb_fd) = 0;
-  virtual Result<void> attach()               = 0;
+  [[nodiscard]] virtual Odin::Result<void> open()                 = 0;
+  [[nodiscard]] virtual Odin::Result<void> load(int shared_rb_fd) = 0;
+  [[nodiscard]] virtual Odin::Result<void> attach()               = 0;
 
   /** --- Event Handling --- **/
 
@@ -67,15 +65,15 @@ public:
    * @param event Pointer to the raw event data.
    * @param size Size of the received data.
    */
-  virtual void processEvent(const ebpf_event *event, size_t size) = 0;
+  virtual void processEvent(const ebpf_event* event, size_t size) = 0;
 
   /** --- Accessors --- **/
 
   /** @brief Returns the unique identifier for this module type. */
-  EbpfModuleId getId() const { return m_id; }
+  [[nodiscard]] EbpfModuleId getId() const { return m_id; }
 
   /** @brief Returns the human-readable name of the module. */
-  std::string_view getName() const { return m_name; }
+  [[nodiscard]] std::string_view getName() const { return m_name; }
 };
 
 } // namespace OdinSight::Daemon::Monitor::Kernel
