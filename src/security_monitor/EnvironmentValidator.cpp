@@ -9,15 +9,16 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+template <typename T> using Result = std::expected<T, std::error_code>;
 
 namespace OdinSight::System::Environment {
 
-bool Validator::isSecureBootEnabled() {
+Result<void> Validator::isSecureBootEnabled() {
   const std::string dirPath = "/sys/firmware/efi/efivars/";
   std::string       secureBootFileName;
 
   if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
-    return false;
+        return std::unexpected(std::make_error_code(std::errc::is_a_directory));
   }
 
   for (const auto &entry : fs::directory_iterator(dirPath)) {
@@ -30,59 +31,65 @@ bool Validator::isSecureBootEnabled() {
   }
 
   if (secureBootFileName.empty()) {
-    return false;
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
   }
 
   FD dirFd(dirPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
   if (!dirFd) {
-    return false;
+        return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
 
   FD secureBootFd(dirFd, secureBootFileName, O_RDONLY);
   if (!secureBootFd) {
-    return false;
+        return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
   uint8_t data[5];
   if (::read(secureBootFd.get(), data, sizeof(data)) != 5) {
-    return false;
+        return std::unexpected(std::error_code(errno, std::system_category()));
   }
 
-  return data[4] == 1;
+  return {}; // Success
 }
 
-bool Validator::isKernelLockdownEnabled() {
+Result<void> Validator::isKernelLockdownEnabled() {
   const std::string lockdownFilePath = "/sys/kernel/security/lockdown";
 
   FD lockdownFd(lockdownFilePath, O_RDONLY);
   if (!lockdownFd) {
-    return false;
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));;
   }
   std::array<char, 256> buffer{};
   const ssize_t         bytesRead = ::read(lockdownFd.get(), buffer.data(), buffer.size() - 1);
 
   if (bytesRead <= 0) {
-    return false;
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
 
   buffer[bytesRead] = '\0';
   const std::string lockdownStatus(buffer.data());
 
-  return lockdownStatus.find("[confidentiality]") != std::string::npos;
+  bool lockdownEnabled = lockdownStatus.find("[confidentiality]") != std::string::npos;
+
+  if (!lockdownEnabled){
+    return std::unexpected(std::make_error_code(std::errc::invalid_seek));
+  }
+
+  return {};
 }
 
-bool Validator::isKernelModuleSignatureEnforcementEnabled() {
+Result<void> Validator::isKernelModuleSignatureEnforcementEnabled() {
   const std::string sigEnforceFilePath = "/sys/module/module/parameters/sig_enforce";
 
   FD sigEnforceFd(sigEnforceFilePath, O_RDONLY);
   if (!sigEnforceFd) {
-    return false;
+    return std::unexpected(std::make_error_code(std::errc::bad_file_descriptor));
   }
 
   std::array<char, 256> buffer{};
   const ssize_t         bytesRead = ::read(sigEnforceFd.get(), buffer.data(), buffer.size() - 1);
 
   if (bytesRead <= 0) {
-    return false;
+        return std::unexpected(std::error_code(errno, std::system_category()));
   }
 
   buffer[bytesRead] = '\0';
@@ -92,13 +99,19 @@ bool Validator::isKernelModuleSignatureEnforcementEnabled() {
     sigEnforce.pop_back();
   }
 
-  return sigEnforce == "1" || sigEnforce == "Y" || sigEnforce == "y";
+  bool kernelModuleSignatureEnforcementEnabled = sigEnforce == "1" || sigEnforce == "Y" || sigEnforce == "y";
+
+  if(!kernelModuleSignatureEnforcementEnabled){
+        return std::unexpected(std::make_error_code(std::errc::invalid_seek));
+  }
+
+  return {};
 }
 
-bool Validator::isValid() {
-  bool secureBootEnabled                       = isSecureBootEnabled();
-  bool kLockdownEnabled                        = isKernelLockdownEnabled();
-  bool kernelModuleSignatureEnforcementEnabled = isKernelModuleSignatureEnforcementEnabled();
+Result<void> Validator::isValid() {
+  Result<void> secureBootEnabled                       = isSecureBootEnabled();
+  Result<void> kLockdownEnabled                        = isKernelLockdownEnabled();
+  Result<void> kernelModuleSignatureEnforcementEnabled = isKernelModuleSignatureEnforcementEnabled();
 
   if (!secureBootEnabled) {
     std::cout << "Error: Secure Boot - disabled." << std::endl;
@@ -127,6 +140,6 @@ bool Validator::isValid() {
     }
   }
 
-  return true;
+  return {};
 }
 } // namespace OdinSight::System::Environment

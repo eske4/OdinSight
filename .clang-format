@@ -19,6 +19,6 @@ MaxEmptyLinesToKeep: 1
 AlignTrailingComments: true
 
 # Modern C++ specific layout
-Standard: c++20
+Standard: c++23
 ColumnLimit: 100
 ---
