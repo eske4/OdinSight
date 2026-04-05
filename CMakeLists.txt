@@ -16,7 +16,9 @@ include(Packages)
 include(Compiler)
 include(BPF)
 
-set(GLOBAL_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(project_headers INTERFACE)
+target_include_directories(project_headers
+                           INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 add_subdirectory(ebpf)
 add_subdirectory(src)

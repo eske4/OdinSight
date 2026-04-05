@@ -25,7 +25,7 @@ public:
     int ev_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (ev_fd < 0)
       throw std::runtime_error("Failed to create eventfd");
-    fd.reset(ev_fd);
+    fd = sys::FD::adopt(ev_fd).value();
   }
 
   // Standard auto-subscriber
