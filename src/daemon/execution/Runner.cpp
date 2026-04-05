@@ -34,14 +34,14 @@ using CGService       = OdinSight::System::CGService;
 
 using Error = Odin::Error;
 
-Odin::Result<std::unique_ptr<Runner>> Runner::create(std::shared_ptr<CGroup> cgroup) {
+Odin::Result<std::unique_ptr<Runner>> Runner::create(std::shared_ptr<CGroup> parent_cg) {
   auto instance = std::unique_ptr<Runner>(new Runner());
 
   if (!instance) {
     return std::unexpected(Odin::Error::Logic(lctx, "create", "Memory allocation failed"));
   }
 
-  auto cgroup_res = CGroup::createAt(cgroup, "game");
+  auto cgroup_res = CGroup::createAt(parent_cg, "game");
   if (!cgroup_res) {
     return std::unexpected(Error::Enrich(lctx, "create_cgroup", cgroup_res.error()));
   }
@@ -66,7 +66,7 @@ Odin::Result<std::unique_ptr<Runner>> Runner::create(std::shared_ptr<CGroup> cgr
   return instance;
 }
 
-Odin::Result<void> Runner::setup(const GameID& game_id, std::shared_ptr<CGroup>& cgroup_parent) {
+Odin::Result<void> Runner::setup(const GameID& game_id) {
   // 1. Validation & State Reset
   if (!this->canLaunch()) {
     return std::unexpected(

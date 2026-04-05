@@ -47,11 +47,10 @@ public:
   Runner(Runner&&)                 = delete;
   Runner& operator=(Runner&&)      = delete;
 
-  static Odin::Result<std::unique_ptr<Runner>> create(std::shared_ptr<CGroup> cgroup);
+  static Odin::Result<std::unique_ptr<Runner>> create(std::shared_ptr<CGroup> parent_cg);
 
   /** --- Setup & Control --- **/
-  [[nodiscard]] Odin::Result<void> setup(const GameID&            game_id,
-                                         std::shared_ptr<CGroup>& cgroup_parent);
+  [[nodiscard]] Odin::Result<void> setup(const GameID& game_id);
   [[nodiscard]] Odin::Result<void> start();
 
   /** --- Cleaning --- **/

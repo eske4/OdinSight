@@ -186,8 +186,8 @@ inline Odin::Result<std::shared_ptr<CGroup>> CGroup::empty() noexcept {
 }
 
 inline Odin::Result<void> CGroup::refresh() noexcept {
-  std::string             name_copy = m_name;
-  std::shared_ptr<CGroup> parent_copy;
+  std::string             name_copy   = m_name;
+  std::shared_ptr<CGroup> parent_copy = m_parent;
 
   cleanup();
 

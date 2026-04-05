@@ -138,7 +138,7 @@ Odin::Result<void> LaunchEvent::prepareGame(const CommandPacket& pkt) {
   }
 
   if (auto parent = cg_parent->getParent(); parent != nullptr) {
-    return runner->setup(pkt.game_id, parent);
+    return runner->setup(pkt.game_id);
   }
   return std::unexpected(Error::Logic(ctx, "prepare_game", "CGroup parent has expired"));
 
