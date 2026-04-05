@@ -113,10 +113,6 @@ inline void CGroup::cleanup() noexcept {
     }
     break;
   }
-
-  if (err) {
-    std::clog << "[Cleanup] FATAL: Could not remove " << m_path << " - " << err.message() << "\n";
-  }
 }
 
 inline Odin::Result<std::shared_ptr<CGroup>> CGroup::create(std::string_view name) noexcept {

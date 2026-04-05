@@ -6,13 +6,11 @@
 #include "system/FD.hpp"
 #include "utils/StringUtil.hpp"
 
-// System headers
 #include <cstdint>
 #include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <grp.h>
-#include <iostream>
 #include <linux/prctl.h>
 #include <linux/sched.h>
 #include <optional>
@@ -37,10 +35,8 @@ using CGService       = OdinSight::System::CGService;
 using Error = Odin::Error;
 
 Odin::Result<std::unique_ptr<Runner>> Runner::create(std::shared_ptr<CGroup> cgroup) {
-  // 1. Allocate on the heap.
   auto instance = std::unique_ptr<Runner>(new Runner());
 
-  // 2. Safety check for allocation failure (though rare in modern Linux)
   if (!instance) {
     return std::unexpected(Odin::Error::Logic(lctx, "create", "Memory allocation failed"));
   }
@@ -62,13 +58,11 @@ Odin::Result<std::unique_ptr<Runner>> Runner::create(std::shared_ptr<CGroup> cgr
     return std::unexpected(Error::Enrich(lctx, "set_proc_limit", proc_res.error()));
   }
 
-  // 3. Initialize the members via the pointer
   instance->m_ctx  = std::nullopt;
   instance->m_fd   = FD::empty();
   instance->m_gpid = -1;
   instance->m_cg   = game_cg;
 
-  // 4. Return the unique_ptr.
   return instance;
 }
 
@@ -103,9 +97,11 @@ Odin::Result<void> Runner::setup(const GameID& game_id, std::shared_ptr<CGroup>&
 
   auto [work_fd, disk_exec_fd, absBinPath] = std::move(*paths_res);
 
-  // 4. Ghosting (Disk to RAM)
   FD final_exec_fd = std::move(disk_exec_fd);
   {
+    // --------------------------------------------------- //
+    // Comment to disable disk to ram ghosting for testing //
+    // --------------------------------------------------- //
     auto ghost_res = create_sealed_memfd(final_exec_fd);
     if (!ghost_res) { return std::unexpected(Error::Enrich(lctx, "ghosting", ghost_res.error())); }
     ::posix_fadvise(final_exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED);
@@ -113,7 +109,6 @@ Odin::Result<void> Runner::setup(const GameID& game_id, std::shared_ptr<CGroup>&
     final_exec_fd = std::move(*ghost_res);
   }
 
-  // 5. Final Context Assembly
   this->m_ctx.emplace(Context{.executable_fd  = std::move(final_exec_fd),
                               .working_dir_fd = std::move(work_fd),
                               .uid            = *uid_res,
@@ -303,28 +298,21 @@ void Runner::execute_child_setup(int error_fd, const std::vector<char*>& argv,
 }
 
 void Runner::stop() {
-  // 1. Release the memory-backed context immediately
   m_ctx.reset();
 
-  // 2. Kill CGroup
+  // 1. CGroup Cleanup
   if (m_cg) {
     if (auto res = CGService::killProcs(*m_cg); !res) { res.error().log(); }
+    if (auto res = m_cg->refresh(); !res) { res.error().log(); }
   }
 
-  // 3. Reap the process (Combined boolean logic)
-  siginfo_t info{};
-  if (m_fd.isValid() && ::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG) == 0 &&
-      info.si_pid != 0) {
-    std::clog << "[Odin] PID " << info.si_pid << " "
-              << (info.si_code == CLD_EXITED ? "exited" : "killed") << " (" << info.si_status
-              << ")\n";
-  }
+  // 2. Process Reaping (Clean & Readable)
+  siginfo_t  info{};
+  const bool has_proc = m_fd.isValid();
+  const bool reaped   = has_proc && ::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG) == 0;
+  const bool exited   = reaped && info.si_pid != 0;
 
-  // 4. Refresh CGroup
-  if (m_cg) {
-    auto res = m_cg->refresh();
-    if (!res) { res.error().log(); }
-  }
+  if (exited) { Odin::Error::Logic("Runner", "reap", "PID exited").log(); }
 
   clearRuntimeState();
 }
@@ -334,6 +322,7 @@ bool Runner::canLaunch() {
   if (!m_fd) { return true; }
 
   siginfo_t info{};
+
   // WNOWAIT is key here: it checks if the process is dead WITHOUT reaping it.
   // This allows the actual stop() function to do the formal reaping later.
 
