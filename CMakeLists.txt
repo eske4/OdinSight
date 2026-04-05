@@ -29,7 +29,6 @@ set(GLOBAL_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_subdirectory(ebpf)
 add_subdirectory(src)
 add_subdirectory(app)
-add_subdirectory(app-test)
 
 option(BUILD_TESTING "Build the testing suite" OFF)
 
