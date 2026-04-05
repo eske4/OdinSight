@@ -4,38 +4,15 @@
 
 namespace OdinSight::System::Environment {
 
-namespace UnsignedKernelModuleLoadProbe {
-
-enum class Status {
-  kBlockedBySignaturePolicy,
-  kDeniedForOtherSecurityReason,
-  kAllowed,
-  kNotRoot,
-  kUnsupportedPlatform,
-  kKernelInfoUnavailable,
-  kKernelHeadersMissing,
-  kTempDirectoryCreationFailed,
-  kSourceWriteFailed,
-  kBuildFailed,
-  kModuleOpenFailed,
-  kUnexpectedLoadFailure
-};
-
-struct Result {
-  bool   isBlocked;
-  Status status;
-};
-
-} // namespace UnsignedKernelModuleLoadProbe
-
 template <typename T> using Result = Odin::Result<T>;
 
 class Validator {
 private:
   /**
    * Checks whether UEFI Secure Boot is enabled.
-   * Reads the SecureBoot EFI variable from /sys/firmware/efi/efivars/.
-   * @return true if Secure Boot is enabled, false otherwise.
+   * Reads the SecureBoot EFI variable from /sys/firmware/efi/efivars/ and verifies
+   * that the EFI payload byte indicates Secure Boot is enabled.
+   * @return success when Secure Boot is enabled, otherwise a structured error.
    */
   [[nodiscard]] static Result<void> isSecureBootEnabled();
 
@@ -56,10 +33,11 @@ private:
   [[nodiscard]] static Result<void> isKernelModuleSignatureEnforcementEnabled();
 
   /**
-   * Actively probes whether the running system blocks a real unsigned module load.
-   * @return the probe status and whether the kernel blocked the load attempt.
+   * Actively probes whether the running system can load a real unsigned module.
+   * @return success when an unsigned module load succeeds, otherwise a structured error that
+   *         explains why the load was denied or why the probe failed.
    */
-  [[nodiscard]] static UnsignedKernelModuleLoadProbe::Result isUnsignedKernelModuleLoadBlocked();
+  [[nodiscard]] static Result<void> canLoadUnsignedKernelModules();
 
 public:
   [[nodiscard]] static Result<void> isValid();

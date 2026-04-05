@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <sys/syscall.h>
 #include <sys/utsname.h>
@@ -20,8 +19,7 @@ namespace OdinSight::System::Environment {
 
 namespace {
 
-using ProbeStatus = UnsignedKernelModuleLoadProbe::Status;
-
+constexpr char errorCtx[] = "UnsignedKernelModuleProbe";
 constexpr char kProbeModuleName[] = "odinsight_unsigned_probe";
 
 constexpr char kProbeModuleSource[] = R"(#include <linux/init.h>
@@ -43,11 +41,6 @@ MODULE_DESCRIPTION("OdinSight unsigned kernel module probe");
 )";
 
 constexpr char kProbeMakefile[] = "obj-m += odinsight_unsigned_probe.o\n";
-
-struct ProbeExecutionResult {
-  ProbeStatus status;
-  int         errorCode{0};
-};
 
 struct ProbePaths {
   fs::path directory;
@@ -79,24 +72,35 @@ private:
   fs::path path_;
 };
 
-bool writeTextFile(const fs::path &path, const std::string &contents) {
+Result<void> writeTextFile(const fs::path &path, const std::string &contents) {
   std::ofstream file(path);
   if (!file) {
-    return false;
+    return std::unexpected(Odin::Error::Logic(
+        errorCtx,
+        "write unsigned kernel module probe source",
+        "Failed to open the unsigned kernel module probe source file"));
   }
 
   file << contents;
-  return file.good();
+  if (!file.good()) {
+    return std::unexpected(Odin::Error::Logic(
+        errorCtx,
+        "write unsigned kernel module probe source",
+        "Failed to write the unsigned kernel module probe source file"));
+  }
+
+  return {};
 }
 
-bool runCommand(const std::vector<std::string> &args) {
+Result<void> runCommand(const std::vector<std::string> &args) {
   if (args.empty()) {
-    return false;
+    return std::unexpected(
+        Odin::Error::Logic(errorCtx, "run unsigned kernel module probe build", "Build command is empty"));
   }
 
   const pid_t pid = ::fork();
   if (pid < 0) {
-    return false;
+    return std::unexpected(Odin::Error::System(errorCtx, "fork unsigned kernel module probe build", errno));
   }
 
   if (pid == 0) {
@@ -114,31 +118,42 @@ bool runCommand(const std::vector<std::string> &args) {
 
   int status = 0;
   if (::waitpid(pid, &status, 0) < 0) {
-    return false;
+    return std::unexpected(Odin::Error::System(errorCtx, "wait for unsigned kernel module probe build", errno));
   }
 
-  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+    return std::unexpected(Odin::Error::Logic(
+        errorCtx,
+        "build unsigned kernel module probe",
+        "Failed to build the unsigned kernel module probe"));
+  }
+
+  return {};
 }
 
-std::optional<fs::path> getKernelBuildDirectory() {
+Result<fs::path> getKernelBuildDirectory() {
   struct utsname kernelInfo{};
   if (::uname(&kernelInfo) != 0) {
-    return std::nullopt;
+    return std::unexpected(Odin::Error::System(errorCtx, "read kernel release", errno));
   }
 
   const fs::path buildDir = fs::path("/usr/lib/modules") / kernelInfo.release / "build";
   if (!fs::is_directory(buildDir)) {
-    return std::nullopt;
+    return std::unexpected(Odin::Error::Logic(
+        errorCtx,
+        "locate kernel headers",
+        "Kernel headers required for the unsigned kernel module probe are missing"));
   }
 
   return buildDir;
 }
 
-std::optional<ProbePaths> createProbePaths() {
+Result<ProbePaths> createProbePaths() {
   char  directoryTemplate[] = "/tmp/odinsight-kmod-probe-XXXXXX";
   char *directoryPath       = ::mkdtemp(directoryTemplate);
   if (!directoryPath) {
-    return std::nullopt;
+    return std::unexpected(
+        Odin::Error::System(errorCtx, "create unsigned kernel module probe directory", errno));
   }
 
   ProbePaths paths;
@@ -149,12 +164,21 @@ std::optional<ProbePaths> createProbePaths() {
   return paths;
 }
 
-bool writeProbeSources(const ProbePaths &paths) {
-  return writeTextFile(paths.sourceFile, kProbeModuleSource) &&
-         writeTextFile(paths.makefile, kProbeMakefile);
+Result<void> writeProbeSources(const ProbePaths &paths) {
+  const Result<void> sourceWriteResult = writeTextFile(paths.sourceFile, kProbeModuleSource);
+  if (!sourceWriteResult) {
+    return std::unexpected(sourceWriteResult.error());
+  }
+
+  const Result<void> makefileWriteResult = writeTextFile(paths.makefile, kProbeMakefile);
+  if (!makefileWriteResult) {
+    return std::unexpected(makefileWriteResult.error());
+  }
+
+  return {};
 }
 
-bool buildProbeModule(const fs::path &kernelBuildDir, const ProbePaths &paths) {
+Result<void> buildProbeModule(const fs::path &kernelBuildDir, const ProbePaths &paths) {
   return runCommand({
       "make",
       "-s",
@@ -165,26 +189,29 @@ bool buildProbeModule(const fs::path &kernelBuildDir, const ProbePaths &paths) {
   });
 }
 
-ProbeExecutionResult classifyLoadFailure(int err) {
+Result<void> classifyLoadFailure(int err) {
   switch (err) {
   case EKEYREJECTED:
   case ENOKEY:
   case EBADMSG:
-    return {ProbeStatus::kBlockedBySignaturePolicy, err};
+    return std::unexpected(
+        Odin::Error::System(errorCtx, "load unsigned kernel module denied by signature policy", err));
 
   case EPERM:
   case EACCES:
-    return {ProbeStatus::kDeniedForOtherSecurityReason, err};
+    return std::unexpected(
+        Odin::Error::System(errorCtx, "load unsigned kernel module denied by other security policy", err));
 
   default:
-    return {ProbeStatus::kUnexpectedLoadFailure, err};
+    return std::unexpected(Odin::Error::System(errorCtx, "load unsigned kernel module probe", err));
   }
 }
 
-ProbeExecutionResult tryLoadProbeModule(const ProbePaths &paths) {
+Result<void> tryLoadProbeModule(const ProbePaths &paths) {
   FD moduleFd(paths.moduleFile.string(), O_RDONLY);
   if (!moduleFd) {
-    return {ProbeStatus::kModuleOpenFailed, errno};
+    return std::unexpected(
+        Odin::Error::System(errorCtx, "open built unsigned kernel module probe", errno));
   }
 
   errno             = 0;
@@ -193,135 +220,61 @@ ProbeExecutionResult tryLoadProbeModule(const ProbePaths &paths) {
     return classifyLoadFailure(errno);
   }
 
-  #ifdef SYS_delete_module
-    errno = 0;
-    if (::syscall(SYS_delete_module, kProbeModuleName, O_NONBLOCK) != 0) {
-      std::cerr << "Unsigned kernel module probe loaded successfully, but could not be unloaded:"
-                << std::strerror(errno) << " (Code: " << errno << ")\n";
-    }
-  #endif
+#ifdef SYS_delete_module
+  errno = 0;
+  if (::syscall(SYS_delete_module, kProbeModuleName, O_NONBLOCK) != 0) {
+    std::cerr << "Unsigned kernel module probe loaded successfully, but could not be unloaded: "
+              << std::strerror(errno) << " (Code: " << errno << ")\n";
+  }
+#endif
 
-  return {ProbeStatus::kAllowed, 0};
+  return {};
 }
 
-ProbeExecutionResult runUnsignedModuleLoadProbe() {
+Result<void> runUnsignedModuleLoadProbe() {
   if (::geteuid() != 0) {
-    return {ProbeStatus::kNotRoot, 0};
+    return std::unexpected(Odin::Error::Logic(
+        errorCtx,
+        "load unsigned kernel module probe",
+        "Unsigned kernel module probe requires root privileges"));
   }
 
 #ifndef SYS_finit_module
-  return {ProbeStatus::kUnsupportedPlatform, 0};
+  return std::unexpected(Odin::Error::Logic(
+      errorCtx,
+      "load unsigned kernel module probe",
+      "Kernel module load probe is not supported on this platform"));
 #else
-  const auto kernelBuildDir = getKernelBuildDirectory();
+  const Result<fs::path> kernelBuildDir = getKernelBuildDirectory();
   if (!kernelBuildDir) {
-    struct utsname kernelInfo{};
-    if (::uname(&kernelInfo) != 0) {
-      return {ProbeStatus::kKernelInfoUnavailable, errno};
-    }
-
-    return {ProbeStatus::kKernelHeadersMissing, 0};
+    return std::unexpected(kernelBuildDir.error());
   }
 
-  const auto probePaths = createProbePaths();
+  const Result<ProbePaths> probePaths = createProbePaths();
   if (!probePaths) {
-    return {ProbeStatus::kTempDirectoryCreationFailed, errno};
+    return std::unexpected(probePaths.error());
   }
 
   ScopedDirectoryCleanup cleanup(probePaths->directory);
 
-  if (!writeProbeSources(*probePaths)) {
-    return {ProbeStatus::kSourceWriteFailed, errno};
+  const Result<void> probeSourcesWriteResult = writeProbeSources(*probePaths);
+  if (!probeSourcesWriteResult) {
+    return std::unexpected(probeSourcesWriteResult.error());
   }
 
-  if (!buildProbeModule(*kernelBuildDir, *probePaths)) {
-    return {ProbeStatus::kBuildFailed, 0};
+  const Result<void> probeBuildResult = buildProbeModule(*kernelBuildDir, *probePaths);
+  if (!probeBuildResult) {
+    return std::unexpected(probeBuildResult.error());
   }
 
   return tryLoadProbeModule(*probePaths);
 #endif
 }
 
-void logProbeFailure(const ProbeExecutionResult &result) {
-  switch (result.status) {
-  case ProbeStatus::kNotRoot:
-    std::cerr << "Probe info: Unsigned kernel module probe requires root privileges.\n";
-    break;
-
-  case ProbeStatus::kUnsupportedPlatform:
-    std::cerr << "Probe info: Kernel module load probe is not supported on this platform.\n";
-    break;
-
-  case ProbeStatus::kKernelInfoUnavailable:
-    std::cerr << "Probe info: Failed to determine the running kernel release: "
-              << std::strerror(result.errorCode) << " (Code: " << result.errorCode << ")\n";
-    break;
-
-  case ProbeStatus::kKernelHeadersMissing: {
-    struct utsname kernelInfo{};
-    if (::uname(&kernelInfo) == 0) {
-      const fs::path kernelBuildDir = fs::path("/usr/lib/modules") / kernelInfo.release / "build";
-      std::cerr << "Probe info: Kernel headers are missing at " << kernelBuildDir
-                << "; cannot build the runtime unsigned kernel module probe.\n";
-    } else {
-      std::cerr << "Probe info: Kernel headers are missing; cannot build the runtime unsigned kernel "
-                   "module probe.\n";
-    }
-    break;
-  }
-
-  case ProbeStatus::kTempDirectoryCreationFailed:
-    std::cerr << "Probe info: Failed to create a temporary directory for the unsigned module probe: "
-              << std::strerror(result.errorCode) << " (Code: " << result.errorCode << ")\n";
-    break;
-
-  case ProbeStatus::kSourceWriteFailed:
-    std::cerr << "Probe info: Failed to write the unsigned module probe sources.\n";
-    break;
-
-  case ProbeStatus::kBuildFailed:
-    std::cerr << "Probe info: Failed to build the unsigned kernel module probe.\n";
-    break;
-
-  case ProbeStatus::kModuleOpenFailed:
-    std::cerr << "Probe info: Failed to open built unsigned kernel module probe: "
-              << std::strerror(result.errorCode) << " (Code: " << result.errorCode << ")\n";
-    break;
-
-  case ProbeStatus::kUnexpectedLoadFailure:
-    std::cerr << "Probe info: Unsigned kernel module probe failed for an unexpected reason: "
-              << std::strerror(result.errorCode) << " (Code: " << result.errorCode << ")\n";
-    break;
-
-  case ProbeStatus::kDeniedForOtherSecurityReason:
-  case ProbeStatus::kBlockedBySignaturePolicy:
-  case ProbeStatus::kAllowed:
-    break;
-  }
-}
-
 } // namespace
 
-UnsignedKernelModuleLoadProbe::Result Validator::isUnsignedKernelModuleLoadBlocked() {
-  const ProbeExecutionResult result = runUnsignedModuleLoadProbe();
-
-  switch (result.status) {
-  case ProbeStatus::kBlockedBySignaturePolicy:
-    std::cerr << "Probe info: Unsigned kernel module load was denied by signature policy: "
-              << std::strerror(result.errorCode) << " (Code: " << result.errorCode << ")\n";
-    return {true, result.status};
-
-  case ProbeStatus::kDeniedForOtherSecurityReason:
-    std::cerr << "Probe info: Unsigned kernel module load was denied: "
-              << std::strerror(result.errorCode) << " (Code: " << result.errorCode << ")\n";
-    return {true, result.status};
-
-  case ProbeStatus::kAllowed:
-    return {false, result.status};
-
-  default:
-    logProbeFailure(result);
-    return {false, result.status};
-  }
+Result<void> Validator::canLoadUnsignedKernelModules() {
+  return runUnsignedModuleLoadProbe();
 }
 
 } // namespace OdinSight::System::Environment
