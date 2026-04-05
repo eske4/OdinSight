@@ -1,7 +1,6 @@
 #pragma once
 
-#include <expected>
-#include <system_error>
+#include "common/Error.hpp"
 
 namespace OdinSight::System::Environment {
 
@@ -22,24 +21,6 @@ enum class Status {
   kUnexpectedLoadFailure
 };
 
-// enum class ProbeStatus {
-//   kAllowed,
-//   kBlockedBySignaturePolicy,
-//   kDeniedForOtherSecurityReason,
-//   kUnexpectedLoadFailure,
-// };
-
-// enum class ProbeError {
-//   kNotRoot,
-//   kUnsupportedPlatform,
-//   kKernelInfoUnavailable,
-//   kKernelHeadersMissing,
-//   kTempDirectoryCreationFailed,
-//   kSourceWriteFailed,
-//   kBuildFailed,
-//   kModuleOpenFailed,
-// };
-
 struct Result {
   bool   isBlocked;
   Status status;
@@ -47,7 +28,7 @@ struct Result {
 
 } // namespace UnsignedKernelModuleLoadProbe
 
-template <typename T> using Result = std::expected<T, std::error_code>;
+template <typename T> using Result = Odin::Result<T>;
 
 class Validator {
 private:
