@@ -70,6 +70,7 @@ public:
 
            std::string name) noexcept;
   [[nodiscard]] static Odin::Result<std::shared_ptr<CGroup>> empty() noexcept;
+  [[nodiscard]] Odin::Result<void>                           refresh() noexcept;
 
   void close() { cleanup(); }
 
@@ -186,6 +187,21 @@ inline Odin::Result<std::shared_ptr<CGroup>> CGroup::empty() noexcept {
   if (ptr == nullptr) { std::unexpected(Error::Logic(ctx, "empty", "Memory allocation failed")); }
 
   return std::shared_ptr<CGroup>(ptr);
+}
+
+inline Odin::Result<void> CGroup::refresh() noexcept {
+  std::string             name_copy = m_name;
+  std::shared_ptr<CGroup> parent_copy;
+
+  cleanup();
+
+  auto res =
+      parent_copy ? CGroup::createAt(parent_copy, std::move(name_copy)) : CGroup::create(name_copy);
+
+  if (!res) { return std::unexpected(Error::Enrich(ctx, "refresh_recreate", res.error())); }
+
+  *this = std::move(**res);
+  return {};
 }
 
 } // namespace OdinSight::System

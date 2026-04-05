@@ -69,7 +69,7 @@ Odin::Result<void> CGService::setCpuLimit(const CGroup& cgroup, std::string_view
 Odin::Result<void> CGService::enableSubtreeControllers(const CGroup& parent_cgroup) {
   // Enable the most common controllers for children
   // Note: '+' prefix is required in subtree_control
-  return writeCG(parent_cgroup, "cgroup.subtree_control", "+cpuset +cpu +io +memory +pids");
+  return writeCG(parent_cgroup, "cgroup.subtree_control", "+cpu +memory +pids");
 }
 
 Odin::Result<void> CGService::killProcs(const CGroup& cgroup) {

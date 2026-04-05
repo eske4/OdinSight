@@ -32,7 +32,7 @@ Odin::Result<OdinEngine> OdinEngine::create(std::shared_ptr<CGroup> parent_cg) {
   auto cg_res = CGroup::createAt(parent_cg, "daemon");
   if (!cg_res) { return std::unexpected(Error::Enrich(ctx, "create_cgroup", cg_res.error())); }
 
-  auto runner_res = Runner::create();
+  auto runner_res = Runner::create(parent_cg);
   if (!runner_res) {
     return std::unexpected(Error::Enrich(ctx, "create_runner", runner_res.error()));
   }
@@ -89,7 +89,6 @@ Odin::Result<void> OdinEngine::init() {
 }
 
 Odin::Result<void> OdinEngine::switchToMonitoring() {
-  std::println("Switching to monitor mode");
   auto exit_event_res = ExitEvent::create(*this);
 
   if (!exit_event_res) {
@@ -104,7 +103,6 @@ Odin::Result<void> OdinEngine::switchToMonitoring() {
 }
 
 Odin::Result<void> OdinEngine::switchToWaiting() {
-  std::println("Switching to waiting state");
   if (m_listener == nullptr) {
     return std::unexpected(Error::Logic(ctx, "Checking listener", "CommandListener is missing"));
   }

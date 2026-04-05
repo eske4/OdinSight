@@ -15,6 +15,10 @@
 namespace OdinSight::Daemon::Launcher {
 
 class Runner final {
+  static constexpr uint64_t GIB_TO_BYTES    = 1024ULL * 1024 * 1024;
+  static constexpr uint64_t MAX_GAME_MEMORY = 4ULL * GIB_TO_BYTES;
+  static constexpr int      MAX_GAME_PROCS  = 1024;
+
 private:
   /** --- Private Type Aliases --- **/
   using GameID    = OdinSight::Common::GameID;
@@ -26,9 +30,10 @@ private:
   static constexpr std::string_view lctx              = "Launcher::Runner";
 
   /** --- Members (State) --- **/
-  std::optional<Context> m_ctx  = std::nullopt;
-  pid_t                  m_gpid = -1;
-  FD                     m_fd   = FD::empty();
+  std::optional<Context>  m_ctx  = std::nullopt;
+  pid_t                   m_gpid = -1;
+  FD                      m_fd   = FD::empty();
+  std::shared_ptr<CGroup> m_cg;
 
   Runner() = default;
 
@@ -42,7 +47,7 @@ public:
   Runner(Runner&&)                 = delete;
   Runner& operator=(Runner&&)      = delete;
 
-  static Odin::Result<std::unique_ptr<Runner>> create();
+  static Odin::Result<std::unique_ptr<Runner>> create(std::shared_ptr<CGroup> cgroup);
 
   /** --- Setup & Control --- **/
   [[nodiscard]] Odin::Result<void> setup(const GameID&            game_id,
@@ -54,11 +59,13 @@ public:
   void stop();
 
   /** --- Status Queries --- **/
-  [[nodiscard]] bool           isActive() const { return m_ctx.has_value() && m_gpid != -1; }
-  [[nodiscard]] bool           isPrepared() const { return m_ctx.has_value() && m_gpid == -1; }
-  [[nodiscard]] bool           canLaunch();
-  [[nodiscard]] pid_t          getGpid() const { return m_gpid; }
-  [[nodiscard]] const FD&      getFd() const { return m_fd; }
+  [[nodiscard]] bool      isActive() const { return m_ctx.has_value() && m_gpid != -1; }
+  [[nodiscard]] bool      isPrepared() const { return m_ctx.has_value() && m_gpid == -1; }
+  [[nodiscard]] bool      canLaunch();
+  [[nodiscard]] pid_t     getGpid() const { return m_gpid; }
+  [[nodiscard]] const FD& getFd() const { return m_fd; }
+  [[nodiscard]] std::shared_ptr<CGroup> getCGroup() const noexcept { return m_cg; }
+
   [[nodiscard]] const Context* getSessionInfo() const;
 
 private:

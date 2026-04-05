@@ -1,9 +1,10 @@
+#include "CGroupService.hpp"
 #include "OdinEngine.hpp"
 #include "system/CGroup.hpp"
 #include <cstdlib>
-#include <ostream>
 
-using CGroup = OdinSight::System::CGroup;
+using CGroup    = OdinSight::System::CGroup;
+using CGService = OdinSight::System::CGService;
 
 using OdinEngine = OdinSight::Daemon::OdinEngine;
 int main() {
@@ -11,17 +12,22 @@ int main() {
 
   if (!cg_res) {
     std::cerr << "[FATAL] Root CGroup initialization failed\n"
-              << "Reason: " << cg_res.error().message() << std::endl;
+              << "Reason: ";
+    cg_res.error().log();
     return EXIT_FAILURE;
   }
 
-  auto cg_root = std::move(cg_res.value());
+  auto cg_root    = std::move(cg_res.value());
+  auto enable_res = OdinSight::System::CGService::enableSubtreeControllers(*cg_root);
+  if (!enable_res) { enable_res.error().log(); }
 
   auto engine_res = OdinEngine::create(cg_root);
 
   if (!engine_res) {
     std::cerr << "[FATAL] Engine construction failed\n"
-              << "Trace: " << engine_res.error().message() << std::endl;
+              << "Trace: ";
+    engine_res.error().log();
+
     return EXIT_FAILURE;
   }
 
@@ -29,13 +35,15 @@ int main() {
 
   if (auto res = engine.init(); !res) {
     std::cerr << "[FATAL] Daemon initialization failed\n"
-              << "Trace: " << res.error().message() << std::endl;
+              << "Trace: ";
+    res.error().log();
     return EXIT_FAILURE;
   }
 
   if (auto res = engine.run(); !res) {
     std::cerr << "[RUNTIME] Engine encountered a critical error\n"
-              << "Trace: " << res.error().message() << std::endl;
+              << "Trace: ";
+    res.error().log();
     return EXIT_FAILURE;
   }
 

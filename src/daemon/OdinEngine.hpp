@@ -33,7 +33,7 @@ private:
 
   std::shared_ptr<CGroup> m_cgroup = nullptr;
 
-  static constexpr std::string_view ctx = "StartupHandler";
+  static constexpr std::string_view ctx = "OdinEngine";
 
   std::vector<EbpfModuleId> m_loadedProtectionModules;
   size_t                    m_loadedCount = 0;

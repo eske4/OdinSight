@@ -12,7 +12,6 @@ struct Context {
   using CGroup = OdinSight::System::CGroup;
   using FD     = OdinSight::System::FD;
 
-  std::shared_ptr<CGroup>  cg;
   FD                       executable_fd;
   FD                       working_dir_fd;
   uid_t                    uid;

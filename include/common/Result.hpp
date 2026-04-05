@@ -2,6 +2,8 @@
 
 #include <expected>
 #include <format>
+#include <iostream>
+#include <ostream>
 #include <string_view>
 #include <system_error>
 
@@ -65,6 +67,26 @@ struct Error {
     }
     return std::format("[{}] {} failed: {}", context, operation,
                        detail.empty() ? "Internal error" : detail);
+  }
+
+  /**
+   * @brief Directly writes the error to an output stream.
+   * This avoids the heap allocation required by std::format/message().
+   */
+  friend std::ostream& operator<<(std::ostream& output_stream, const Error& err) {
+    output_stream << "[" << err.context << "] " << err.operation << " failed: ";
+    if (err.code) {
+      output_stream << err.code.message() << " (" << err.code.value() << ")";
+    } else {
+      output_stream << (err.detail.empty() ? "Internal error" : err.detail);
+    }
+    return output_stream;
+  }
+
+  // Inside struct Error
+  void log() const noexcept {
+    // This uses your custom operator<< to perform the stream write
+    std::clog << *this << std::endl;
   }
 };
 

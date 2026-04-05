@@ -36,7 +36,7 @@ using CGService       = OdinSight::System::CGService;
 
 using Error = Odin::Error;
 
-Odin::Result<std::unique_ptr<Runner>> Runner::create() {
+Odin::Result<std::unique_ptr<Runner>> Runner::create(std::shared_ptr<CGroup> cgroup) {
   // 1. Allocate on the heap.
   auto instance = std::unique_ptr<Runner>(new Runner());
 
@@ -45,10 +45,28 @@ Odin::Result<std::unique_ptr<Runner>> Runner::create() {
     return std::unexpected(Odin::Error::Logic(lctx, "create", "Memory allocation failed"));
   }
 
+  auto cgroup_res = CGroup::createAt(cgroup, "game");
+  if (!cgroup_res) {
+    return std::unexpected(Error::Enrich(lctx, "create_cgroup", cgroup_res.error()));
+  }
+
+  auto& game_cg = cgroup_res.value();
+  auto  mem_res = CGService::setMemoryLimit(*game_cg, MAX_GAME_MEMORY);
+  if (!mem_res) {
+    return std::unexpected(Error::Enrich(lctx, "set_memory_limit", mem_res.error()));
+  }
+
+  // 2. Set Process Limit (1024)
+  auto proc_res = CGService::setProcLimit(*game_cg, MAX_GAME_PROCS);
+  if (!proc_res) {
+    return std::unexpected(Error::Enrich(lctx, "set_proc_limit", proc_res.error()));
+  }
+
   // 3. Initialize the members via the pointer
   instance->m_ctx  = std::nullopt;
   instance->m_fd   = FD::empty();
   instance->m_gpid = -1;
+  instance->m_cg   = game_cg;
 
   // 4. Return the unique_ptr.
   return instance;
@@ -78,13 +96,6 @@ Odin::Result<void> Runner::setup(const GameID& game_id, std::shared_ptr<CGroup>&
   auto env_res = IdentityService::getUserEnvironment(*uid_res);
   if (!env_res) { return std::unexpected(Error::Enrich(lctx, "resolve_env", env_res.error())); }
 
-  // 3. System Resource Allocation (The "Where")
-  // Note: Pass just the child name "game" if createAt uses mkdirat
-  auto cgroup_res = CGroup::createAt(cgroup_parent, "game");
-  if (!cgroup_res) {
-    return std::unexpected(Error::Enrich(lctx, "create_cgroup", cgroup_res.error()));
-  }
-
   auto paths_res = resolve_paths(*entry, *uid_res);
   if (!paths_res) {
     return std::unexpected(Error::Enrich(lctx, "resolve_paths", paths_res.error()));
@@ -103,8 +114,7 @@ Odin::Result<void> Runner::setup(const GameID& game_id, std::shared_ptr<CGroup>&
   }
 
   // 5. Final Context Assembly
-  this->m_ctx.emplace(Context{.cg             = std::move(*cgroup_res),
-                              .executable_fd  = std::move(final_exec_fd),
+  this->m_ctx.emplace(Context{.executable_fd  = std::move(final_exec_fd),
                               .working_dir_fd = std::move(work_fd),
                               .uid            = *uid_res,
                               .gid            = *gid_res,
@@ -173,12 +183,12 @@ Odin::Result<FD> Runner::create_sealed_memfd(const FD& disk_exec_fd) {
   auto mfd = FD::adopt(mfd_raw);
   if (!mfd) { return std::unexpected(Error::Enrich(lctx, "memfd_adopt", mfd.error())); }
 
-  struct stat st;
-  if (::fstat(disk_exec_fd.get(), &st) < 0) {
+  struct stat stat_res;
+  if (::fstat(disk_exec_fd.get(), &stat_res) < 0) {
     return std::unexpected(Error::System(lctx, "fstat_exec", errno));
   }
 
-  if (::sendfile(mfd->get(), disk_exec_fd.get(), nullptr, st.st_size) != st.st_size) {
+  if (::sendfile(mfd->get(), disk_exec_fd.get(), nullptr, stat_res.st_size) != stat_res.st_size) {
     return std::unexpected(Error::System(lctx, "sendfile", errno));
   }
 
@@ -201,7 +211,7 @@ Odin::Result<void> Runner::start() {
     return std::unexpected(Error::Logic(lctx, "start", "Process already running"));
   }
 
-  const auto& cgroup_res = ctx.cg->getFD();
+  const auto& cgroup_res = m_cg->getFD();
   if (!cgroup_res) { return std::unexpected(Error::Logic(lctx, "start", "Invalid CGroup FD")); }
 
   // 1. Prepare Arguments & Pipe
@@ -293,30 +303,30 @@ void Runner::execute_child_setup(int error_fd, const std::vector<char*>& argv,
 }
 
 void Runner::stop() {
-  // 1. Kill everything in the CGroup first
-  if (m_ctx.has_value() && this->m_ctx->cg) {
-    auto res = CGService::killProcs(*m_ctx->cg);
-    if (!res) {
-      std::clog << "[OdinSight Runner] Warning: CGroup kill failed: " << res.error().message()
-                << std::endl;
-    }
+  // 1. Release the memory-backed context immediately
+  m_ctx.reset();
+
+  // 2. Kill CGroup
+  if (m_cg) {
+    if (auto res = CGService::killProcs(*m_cg); !res) { res.error().log(); }
   }
 
-  if (m_fd.isValid()) {
-    siginfo_t info{};
-    // We try to reap. We don't care if it fails, but we only log if it works.
-    if (::waitid(P_PIDFD, m_fd.get(), &info, WEXITED) == 0 && info.si_pid != 0) {
-      bool normalExit = (info.si_code == CLD_EXITED);
-      std::clog << "[OdinSight Runner] Game (PID " << info.si_pid << ") "
-                << (normalExit ? "exited normally: " : "terminated by signal: ") << info.si_status
-                << "\n";
-    }
+  // 3. Reap the process (Combined boolean logic)
+  siginfo_t info{};
+  if (m_fd.isValid() && ::waitid(P_PIDFD, m_fd.get(), &info, WEXITED | WNOHANG) == 0 &&
+      info.si_pid != 0) {
+    std::clog << "[Odin] PID " << info.si_pid << " "
+              << (info.si_code == CLD_EXITED ? "exited" : "killed") << " (" << info.si_status
+              << ")\n";
+  }
+
+  // 4. Refresh CGroup
+  if (m_cg) {
+    auto res = m_cg->refresh();
+    if (!res) { res.error().log(); }
   }
 
   clearRuntimeState();
-  this->m_ctx.reset();
-
-  std::clog << "[OdinSight - Runner] Resources cleaned." << std::endl;
 }
 
 bool Runner::canLaunch() {
