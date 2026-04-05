@@ -1,14 +1,16 @@
 #include "OdinEngine.hpp"
 #include "EPollManager.hpp"
-#include "ExitHandler.hpp"
-#include "StartupHandler.hpp"
+#include "ExitEvent.hpp"
+#include "LaunchEvent.hpp"
 #include "common/Result.hpp"
+#include <print>
 
 namespace OdinSight::Daemon {
 
-template <typename T> using Result = std::expected<T, std::error_code>;
-using StartupHandler               = OdinSight::Daemon::Session::StartupHandler;
-using ExitHandler                  = OdinSight::Daemon::Session::ExitHandler;
+using LaunchEvent = OdinSight::Daemon::Events::LaunchEvent;
+using ExitEvent   = OdinSight::Daemon::Events::ExitEvent;
+
+using EbpfModuleId = OdinSight::Daemon::Monitor::Kernel::EbpfModuleId;
 
 using Error = Odin::Error;
 
@@ -44,6 +46,8 @@ Odin::Result<OdinEngine> OdinEngine::create(std::shared_ptr<CGroup> parent_cg) {
   engine.m_runner    = std::move(runner_res.value());
   engine.m_listener  = std::move(listener_res.value());
 
+  engine.m_loadedProtectionModules.reserve(MODULE_COUNT);
+
   return std::move(engine);
 }
 
@@ -60,24 +64,9 @@ Odin::Result<void> OdinEngine::initializeManagers() {
 }
 
 Odin::Result<void> OdinEngine::initializeListeners() {
-  auto startup_res = StartupHandler::create(m_runner.get(), m_ebpf_mgr.get(), m_listener.get(),
-                                            m_epoll_mgr.get(), m_cgroup);
+  auto wait_state_res = switchToWaiting();
 
-  // auto exit_handler_res = ExitHandler::create(m_runner.get(), m_ebpf_mgr.get(),
-  // m_listener.get());
-
-  if (!startup_res) {
-    return std::unexpected(Error::Enrich(ctx, "create_startup_handler", startup_res.error()));
-  }
-
-  // if (!exit_handler_res) {
-  //   return std::unexpected(exit_handler_res.error());
-  // }
-  //
-  if (auto res = m_epoll_mgr->subscribe(std::move(*startup_res)); !res) {
-    return std::unexpected(Error::Enrich(ctx, "subscribe_startup", res.error()));
-  }
-  // auto exit_module    = std::move(exit_handler_res.value());
+  if (!wait_state_res) { return std::unexpected(wait_state_res.error()); }
 
   return {};
 }
@@ -85,6 +74,44 @@ Odin::Result<void> OdinEngine::initializeListeners() {
 Odin::Result<void> OdinEngine::init() {
   if (auto res = initializeManagers(); !res) { return res; }
   if (auto res = initializeListeners(); !res) { return res; }
+  return {};
+}
+
+Odin::Result<void> OdinEngine::switchToMonitoring() {
+  std::println("Switching to monitor mode");
+  auto exit_event_res = ExitEvent::create(*this);
+
+  if (!exit_event_res) {
+    return std::unexpected(Error::Enrich(ctx, "create_exit_event", exit_event_res.error()));
+  }
+
+  if (auto res = m_epoll_mgr->subscribe(std::move(*exit_event_res)); !res) {
+    return std::unexpected(Error::Enrich(ctx, "subscribe_exit_event", res.error()));
+  }
+
+  return {};
+}
+
+Odin::Result<void> OdinEngine::switchToWaiting() {
+  std::println("Switching to waiting state");
+  if (m_listener == nullptr) {
+    return std::unexpected(Error::Logic(ctx, "Checking listener", "CommandListener is missing"));
+  }
+
+  if (auto res = m_listener->start(); !res) {
+    return std::unexpected(Error::Enrich(ctx, "initialize socket", res.error()));
+  }
+
+  auto startup_res = LaunchEvent::create(*this);
+
+  if (!startup_res) {
+    return std::unexpected(Error::Enrich(ctx, "create_launch_event", startup_res.error()));
+  }
+
+  if (auto res = m_epoll_mgr->subscribe(std::move(*startup_res)); !res) {
+    return std::unexpected(Error::Enrich(ctx, "subscribe_startup", res.error()));
+  }
+
   return {};
 }
 
@@ -96,6 +123,14 @@ Odin::Result<void> OdinEngine::run() {
       return std::unexpected(Error::Enrich(ctx, "poll_loop", res.error()));
     }
   }
+  return {};
+}
+
+Odin::Result<void> OdinEngine::registerModule(EbpfModuleId mod_id) {
+  if (m_loadedProtectionModules.size() >= MODULE_COUNT) {
+    return std::unexpected(Error::Logic(ctx, "register", "Module limit reached"));
+  }
+  m_loadedProtectionModules.push_back(mod_id);
   return {};
 }
 

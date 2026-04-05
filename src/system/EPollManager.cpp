@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <csignal>
 #include <fcntl.h>
-#include <print>
 #include <sys/signalfd.h>
 #include <unistd.h>
 

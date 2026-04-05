@@ -33,6 +33,8 @@ private:
 
   EbpfManager() = default;
 
+  static constexpr std::string_view name = "EbpfManager";
+
   static int handleEvent(void* ctx, void* data, size_t data_sz);
 
 public:
