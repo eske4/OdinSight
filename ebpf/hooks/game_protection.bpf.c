@@ -46,10 +46,10 @@ const volatile __u32 DAEMON_PID    = 0;
 #define KERNFS_DIR 0x0001
 #endif
 
-struct caller_ctx {
+typedef struct {
   __u32 pid;
   __u64 cgid;
-};
+} caller_ctx;
 
 struct {
   __uint(type, BPF_MAP_TYPE_HASH);
@@ -62,7 +62,7 @@ struct {
 
 static __always_inline int   is_protected_cgroup(__u64 cgid);
 static __always_inline bool  is_daemon_process(__u32 pid);
-static __always_inline void  get_caller_ctx(struct caller_ctx* ctx);
+static __always_inline void  get_caller_ctx(caller_ctx* ctx);
 static __always_inline __u64 get_cgid_from_task(struct task_struct* task);
 
 static __always_inline bool envp_has_ld_preload(const char* const* envp);
@@ -82,9 +82,9 @@ static __always_inline void detect_ld_preload_from_envp(const char* const* envp)
 
 SEC("lsm/ptrace_access_check")
 int BPF_PROG(restrict_ptrace_access, struct task_struct* child, unsigned int mode, int ret) {
-  struct caller_ctx caller = {};
-  __u64             target_cgid;
-  __u32             target_pid;
+  caller_ctx caller = {};
+  __u64      target_cgid;
+  __u32      target_pid;
 
   if (ret) return ret;
 
@@ -119,9 +119,9 @@ int BPF_PROG(restrict_ptrace_access, struct task_struct* child, unsigned int mod
 
 SEC("lsm/ptrace_traceme")
 int BPF_PROG(restrict_ptrace_traceme, struct task_struct* parent, int ret) {
-  struct caller_ctx caller = {};
-  __u64             parent_cgid;
-  __u32             parent_pid;
+  caller_ctx caller = {};
+  __u64      parent_cgid;
+  __u32      parent_pid;
 
   if (ret) return ret;
 
@@ -150,7 +150,7 @@ int BPF_PROG(restrict_ptrace_traceme, struct task_struct* parent, int ret) {
 SEC("lsm/mmap_file")
 int BPF_PROG(restrict_mmap_file, struct file* file, unsigned long reqprot, unsigned long prot,
              unsigned long flags, int ret) {
-  struct caller_ctx caller = {};
+  caller_ctx caller = {};
 
   if (ret) return ret;
 
@@ -194,9 +194,9 @@ int BPF_PROG(restrict_mmap_file, struct file* file, unsigned long reqprot, unsig
 SEC("lsm/file_mprotect")
 int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long reqprot,
              unsigned long prot, int ret) {
-  struct caller_ctx caller = {};
-  struct file*      backing_file;
-  unsigned long     vm_flags;
+  caller_ctx    caller = {};
+  struct file*  backing_file;
+  unsigned long vm_flags;
 
   if (ret) return ret;
 
@@ -244,15 +244,15 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
 }
 
 /* inode_permission
- *
+
  * Prevents outside processes from modifying protected cgroupfs entries
  * and inspecting protected cgroup processes through procfs.
  */
 
 SEC("lsm/inode_permission")
 int BPF_PROG(restrict_inode_permission, struct inode* inode, int mask, int ret) {
-  struct caller_ctx caller = {};
-  unsigned long     sb_magic;
+  caller_ctx    caller = {};
+  unsigned long sb_magic;
 
   if (ret) return ret;
 
@@ -470,8 +470,8 @@ int detect_ld_preload_execveat(struct trace_event_raw_sys_enter* ctx) {
 
 SEC("lsm/bprm_check_security")
 int BPF_PROG(block_ld_preload_exec, struct linux_binprm* bprm, int ret) {
-  struct caller_ctx caller = {};
-  __u8*             mark;
+  caller_ctx caller = {};
+  __u8*      mark;
 
   if (ret) return ret;
 
@@ -495,7 +495,7 @@ int BPF_PROG(block_ld_preload_exec, struct linux_binprm* bprm, int ret) {
 
 /* Helper Functions */
 
-static __always_inline void get_caller_ctx(struct caller_ctx* ctx) {
+static __always_inline void get_caller_ctx(caller_ctx* ctx) {
   __u64 pid_tgid = bpf_get_current_pid_tgid();
 
   ctx->pid  = (__u32) (pid_tgid >> 32);
@@ -556,8 +556,8 @@ static __always_inline bool envp_has_ld_preload(const char* const* envp) {
 }
 
 static __always_inline void detect_ld_preload_from_envp(const char* const* envp) {
-  struct caller_ctx caller = {};
-  __u8              mark   = 1;
+  caller_ctx caller = {};
+  __u8       mark   = 1;
 
   get_caller_ctx(&caller);
 
