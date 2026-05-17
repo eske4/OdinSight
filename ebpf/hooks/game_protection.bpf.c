@@ -63,12 +63,7 @@ static __always_inline bool is_daemon_process(__u32 pid) {
   return DAEMON_PID != 0 && pid == DAEMON_PID;
 }
 
-static __always_inline void get_caller_ctx(struct caller_ctx* ctx) {
-  __u64 pid_tgid = bpf_get_current_pid_tgid();
-
-  ctx->pid  = (__u32) (pid_tgid >> 32);
-  ctx->cgid = bpf_get_current_cgroup_id();
-}
+static __always_inline void get_caller_ctx(struct caller_ctx* ctx);
 
 static __always_inline __u64 task_cgroup_id(struct task_struct* task) {
   struct css_set*     css;
@@ -564,6 +559,13 @@ int BPF_PROG(block_ld_preload_exec, struct linux_binprm* bprm, int ret) {
              caller.pid, caller.cgid, TARGET_CGROUP);
 
   return -EPERM;
+}
+
+static __always_inline void get_caller_ctx(struct caller_ctx* ctx) {
+  __u64 pid_tgid = bpf_get_current_pid_tgid();
+
+  ctx->pid  = (__u32) (pid_tgid >> 32);
+  ctx->cgid = bpf_get_current_cgroup_id();
 }
 
 char _license[] SEC("license") = "GPL";
