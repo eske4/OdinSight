@@ -51,12 +51,22 @@ struct caller_ctx {
   __u64 cgid;
 };
 
+struct {
+  __uint(type, BPF_MAP_TYPE_HASH);
+  __uint(max_entries, 8192);
+  __type(key, __u32);
+  __type(value, __u8);
+} blocked_exec_pids SEC(".maps");
+
 /* Helper Function Declarations */
 
 static __always_inline int   is_protected_cgroup(__u64 cgid);
 static __always_inline bool  is_daemon_process(__u32 pid);
 static __always_inline void  get_caller_ctx(struct caller_ctx* ctx);
-static __always_inline __u64 get_task_cgroup_id(struct task_struct* task);
+static __always_inline __u64 get_cgid_from_task(struct task_struct* task);
+
+static __always_inline bool envp_has_ld_preload(const char* const* envp);
+static __always_inline void detect_ld_preload_from_envp(const char* const* envp);
 
 /* Game Protection Hooks */
 
@@ -84,7 +94,7 @@ int BPF_PROG(restrict_ptrace_access, struct task_struct* child, unsigned int mod
 
   if (is_daemon_process(caller.pid)) return 0;
 
-  target_cgid = get_task_cgroup_id(child);
+  target_cgid = get_cgid_from_task(child);
   if (!is_protected_cgroup(target_cgid)) return 0;
 
   target_pid = BPF_CORE_READ(child, tgid);
@@ -119,7 +129,7 @@ int BPF_PROG(restrict_ptrace_traceme, struct task_struct* parent, int ret) {
 
   if (is_daemon_process(caller.pid) || !is_protected_cgroup(caller.cgid)) return 0;
 
-  parent_cgid = parent ? get_task_cgroup_id(parent) : 0;
+  parent_cgid = parent ? get_cgid_from_task(parent) : 0;
   parent_pid  = parent ? BPF_CORE_READ(parent, tgid) : 0;
 
   bpf_printk("ptrace_traceme denied: [caller pid=%u cgid=%llu]"
@@ -315,7 +325,7 @@ int BPF_PROG(restrict_inode_permission, struct inode* inode, int mask, int ret) 
     struct task_struct* target_task = bpf_task_from_pid(target_pid);
 
     if (target_task) {
-      __u64 target_cgid = get_task_cgroup_id(target_task);
+      __u64 target_cgid = get_cgid_from_task(target_task);
       bpf_task_release(target_task);
 
       if (is_protected_cgroup(target_cgid)) {
@@ -445,59 +455,6 @@ int BPF_PROG(restrict_move_mount, const struct path* from_path, const struct pat
  * - LD_PRELOAD-based shared library injection inside the protected cgroup.
  */
 
-struct {
-  __uint(type, BPF_MAP_TYPE_HASH);
-  __uint(max_entries, 8192);
-  __type(key, __u32); // process PID / TGID
-  __type(value, __u8);
-} blocked_exec_pids SEC(".maps");
-
-static __always_inline bool envp_has_ld_preload(const char* const* envp) {
-  int i;
-
-#pragma unroll
-  for (i = 0; i < MAX_ENV_SCAN; i++) {
-    const char* entry            = NULL;
-    char        buf[MAX_ENV_LEN] = {};
-    int         len;
-
-    if (bpf_probe_read_user(&entry, sizeof(entry), &envp[i])) return false;
-
-    if (!entry) return false;
-
-    len = bpf_probe_read_user_str(buf, sizeof(buf), entry);
-    if (len <= 0) continue;
-
-    if (len >= 12 && buf[0] == 'L' && buf[1] == 'D' && buf[2] == '_' && buf[3] == 'P' &&
-        buf[4] == 'R' && buf[5] == 'E' && buf[6] == 'L' && buf[7] == 'O' && buf[8] == 'A' &&
-        buf[9] == 'D' && buf[10] == '=') {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static __always_inline void detect_ld_preload_from_envp(const char* const* envp) {
-  struct caller_ctx caller = {};
-  __u8              mark   = 1;
-
-  get_caller_ctx(&caller);
-
-  bpf_map_delete_elem(&blocked_exec_pids, &caller.pid);
-
-  if (!envp) return;
-
-  if (!is_protected_cgroup(caller.cgid)) return;
-
-  if (envp_has_ld_preload(envp)) {
-    bpf_map_update_elem(&blocked_exec_pids, &caller.pid, &mark, BPF_ANY);
-
-    bpf_printk("LD_PRELOAD detected before exec: [caller pid=%u cgid=%llu] [protected cgid=%llu]\n",
-               caller.pid, caller.cgid, TARGET_CGROUP);
-  }
-}
-
 SEC("tracepoint/syscalls/sys_enter_execve")
 int detect_ld_preload_execve(struct trace_event_raw_sys_enter* ctx) {
   detect_ld_preload_from_envp((const char* const*) ctx->args[2]);
@@ -552,7 +509,7 @@ static __always_inline bool is_daemon_process(__u32 pid) {
   return DAEMON_PID != 0 && pid == DAEMON_PID;
 }
 
-static __always_inline __u64 get_task_cgroup_id(struct task_struct* task) {
+static __always_inline __u64 get_cgid_from_task(struct task_struct* task) {
   struct css_set*     css;
   struct cgroup*      cgrp;
   struct kernfs_node* kn;
@@ -569,6 +526,52 @@ static __always_inline __u64 get_task_cgroup_id(struct task_struct* task) {
   if (!kn) return 0;
 
   return BPF_CORE_READ(kn, id);
+}
+
+static __always_inline bool envp_has_ld_preload(const char* const* envp) {
+  int i;
+
+#pragma unroll
+  for (i = 0; i < MAX_ENV_SCAN; i++) {
+    const char* entry            = NULL;
+    char        buf[MAX_ENV_LEN] = {};
+    int         len;
+
+    if (bpf_probe_read_user(&entry, sizeof(entry), &envp[i])) return false;
+
+    if (!entry) return false;
+
+    len = bpf_probe_read_user_str(buf, sizeof(buf), entry);
+    if (len <= 0) continue;
+
+    if (len >= 12 && buf[0] == 'L' && buf[1] == 'D' && buf[2] == '_' && buf[3] == 'P' &&
+        buf[4] == 'R' && buf[5] == 'E' && buf[6] == 'L' && buf[7] == 'O' && buf[8] == 'A' &&
+        buf[9] == 'D' && buf[10] == '=') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static __always_inline void detect_ld_preload_from_envp(const char* const* envp) {
+  struct caller_ctx caller = {};
+  __u8              mark   = 1;
+
+  get_caller_ctx(&caller);
+
+  bpf_map_delete_elem(&blocked_exec_pids, &caller.pid);
+
+  if (!envp) return;
+
+  if (!is_protected_cgroup(caller.cgid)) return;
+
+  if (envp_has_ld_preload(envp)) {
+    bpf_map_update_elem(&blocked_exec_pids, &caller.pid, &mark, BPF_ANY);
+
+    bpf_printk("LD_PRELOAD detected before exec: [caller pid=%u cgid=%llu] [protected cgid=%llu]\n",
+               caller.pid, caller.cgid, TARGET_CGROUP);
+  }
 }
 
 char _license[] SEC("license") = "GPL";
