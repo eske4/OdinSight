@@ -244,6 +244,7 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
 }
 
 /* inode_permission
+ *
  * Prevents outside processes from modifying protected cgroupfs entries
  * and inspecting protected cgroup processes through procfs.
  */
