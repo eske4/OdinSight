@@ -47,42 +47,18 @@ const volatile __u32 DAEMON_PID    = 0;
 #endif
 
 struct caller_ctx {
-  // --- Caller process PID. (TGID in the kernel) ---
   __u32 pid;
-
-  // --- Caller cgroup ID ---
   __u64 cgid;
 };
 
-/* Helper Functions */
-static __always_inline int is_protected_cgroup(__u64 cgid) {
-  return TARGET_CGROUP != 0 && cgid == TARGET_CGROUP;
-}
+/* Helper Function Declarations */
 
-static __always_inline bool is_daemon_process(__u32 pid) {
-  return DAEMON_PID != 0 && pid == DAEMON_PID;
-}
+static __always_inline int   is_protected_cgroup(__u64 cgid);
+static __always_inline bool  is_daemon_process(__u32 pid);
+static __always_inline void  get_caller_ctx(struct caller_ctx* ctx);
+static __always_inline __u64 get_task_cgroup_id(struct task_struct* task);
 
-static __always_inline void get_caller_ctx(struct caller_ctx* ctx);
-
-static __always_inline __u64 task_cgroup_id(struct task_struct* task) {
-  struct css_set*     css;
-  struct cgroup*      cgrp;
-  struct kernfs_node* kn;
-
-  if (!task) return 0;
-
-  css = BPF_CORE_READ(task, cgroups);
-  if (!css) return 0;
-
-  cgrp = BPF_CORE_READ(css, dfl_cgrp);
-  if (!cgrp) return 0;
-
-  kn = BPF_CORE_READ(cgrp, kn);
-  if (!kn) return 0;
-
-  return BPF_CORE_READ(kn, id);
-}
+/* Game Protection Hooks */
 
 /* ptrace_access_check
  *
@@ -108,7 +84,7 @@ int BPF_PROG(restrict_ptrace_access, struct task_struct* child, unsigned int mod
 
   if (is_daemon_process(caller.pid)) return 0;
 
-  target_cgid = task_cgroup_id(child);
+  target_cgid = get_task_cgroup_id(child);
   if (!is_protected_cgroup(target_cgid)) return 0;
 
   target_pid = BPF_CORE_READ(child, tgid);
@@ -143,7 +119,7 @@ int BPF_PROG(restrict_ptrace_traceme, struct task_struct* parent, int ret) {
 
   if (is_daemon_process(caller.pid) || !is_protected_cgroup(caller.cgid)) return 0;
 
-  parent_cgid = parent ? task_cgroup_id(parent) : 0;
+  parent_cgid = parent ? get_task_cgroup_id(parent) : 0;
   parent_pid  = parent ? BPF_CORE_READ(parent, tgid) : 0;
 
   bpf_printk("ptrace_traceme denied: [caller pid=%u cgid=%llu]"
@@ -161,14 +137,6 @@ int BPF_PROG(restrict_ptrace_traceme, struct task_struct* parent, int ret) {
  * - anonymous executable mappings, such as anonymous RX/RWX memory not backed by a file.
  */
 
- static __always_inline int has_write(unsigned long prot) { return (prot & PROT_WRITE) != 0; }
-
-static __always_inline int has_exec(unsigned long prot) { return (prot & PROT_EXEC) != 0; }
-
-static __always_inline int has_wx(unsigned long prot) {
-  return (prot & PROT_WRITE) && (prot & PROT_EXEC);
-}
-
 SEC("lsm/mmap_file")
 int BPF_PROG(restrict_mmap_file, struct file* file, unsigned long reqprot, unsigned long prot,
              unsigned long flags, int ret) {
@@ -180,12 +148,10 @@ int BPF_PROG(restrict_mmap_file, struct file* file, unsigned long reqprot, unsig
 
   if (is_daemon_process(caller.pid) || !is_protected_cgroup(caller.cgid)) return 0;
 
-  const bool is_wx_mapping =
-    ((reqprot & PROT_WRITE) && (reqprot & PROT_EXEC)) ||
-    ((prot & PROT_WRITE) && (prot & PROT_EXEC));
+  const bool is_wx_mapping = ((reqprot & PROT_WRITE) && (reqprot & PROT_EXEC)) ||
+                             ((prot & PROT_WRITE) && (prot & PROT_EXEC));
 
-  const bool is_anonymous_exec =
-    !file && ((reqprot & PROT_EXEC) || (prot & PROT_EXEC));
+  const bool is_anonymous_exec = !file && ((reqprot & PROT_EXEC) || (prot & PROT_EXEC));
 
   if (is_wx_mapping) {
     bpf_printk("mmap_file denied: [caller pid=%u cgid=%llu]"
@@ -230,7 +196,10 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
 
   if (is_daemon_process(caller.pid) || !is_protected_cgroup(caller.cgid)) return 0;
 
-  if (has_wx(reqprot) || has_wx(prot)) {
+  const bool is_wx_mapping = ((reqprot & PROT_WRITE) && (reqprot & PROT_EXEC)) ||
+                             ((prot & PROT_WRITE) && (prot & PROT_EXEC));
+
+  if (is_wx_mapping) {
     bpf_printk("file_mprotect denied: [caller pid=%u cgid=%llu]"
                " [reason=wx reqprot=%lu prot=%lu] [protected cgid=%llu]\n",
                caller.pid, caller.cgid, reqprot, prot, TARGET_CGROUP);
@@ -240,8 +209,11 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
   backing_file = BPF_CORE_READ(vma, vm_file);
   vm_flags     = BPF_CORE_READ(vma, vm_flags);
 
-  if (((vm_flags & VM_WRITE) && (has_exec(reqprot) || has_exec(prot))) ||
-      ((vm_flags & VM_EXEC) && (has_write(reqprot) || has_write(prot)))) {
+  const bool is_wx_transition =
+      ((vm_flags & VM_WRITE) && ((reqprot & PROT_EXEC) || (prot & PROT_EXEC))) ||
+      ((vm_flags & VM_EXEC) && ((reqprot & PROT_WRITE) || (prot & PROT_WRITE)));
+
+  if (is_wx_transition) {
     bpf_printk("file_mprotect denied: [caller pid=%u cgid=%llu]"
                " [reason=writable_to_exec vm_flags=%lu reqprot=%lu prot=%lu]"
                " [protected cgid=%llu]\n",
@@ -249,7 +221,9 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
     return -EPERM;
   }
 
-  if (!backing_file && (has_exec(reqprot) || has_exec(prot))) {
+  const bool is_anonymous_exec = !backing_file && ((reqprot & PROT_EXEC) || (prot & PROT_EXEC));
+
+  if (is_anonymous_exec) {
     bpf_printk("file_mprotect denied: [caller pid=%u cgid=%llu]"
                " [reason=anonymous_exec reqprot=%lu prot=%lu] [protected cgid=%llu]\n",
                caller.pid, caller.cgid, reqprot, prot, TARGET_CGROUP);
@@ -341,7 +315,7 @@ int BPF_PROG(restrict_inode_permission, struct inode* inode, int mask, int ret) 
     struct task_struct* target_task = bpf_task_from_pid(target_pid);
 
     if (target_task) {
-      __u64 target_cgid = task_cgroup_id(target_task);
+      __u64 target_cgid = get_task_cgroup_id(target_task);
       bpf_task_release(target_task);
 
       if (is_protected_cgroup(target_cgid)) {
@@ -561,11 +535,40 @@ int BPF_PROG(block_ld_preload_exec, struct linux_binprm* bprm, int ret) {
   return -EPERM;
 }
 
+/* Helper Functions */
+
 static __always_inline void get_caller_ctx(struct caller_ctx* ctx) {
   __u64 pid_tgid = bpf_get_current_pid_tgid();
 
   ctx->pid  = (__u32) (pid_tgid >> 32);
   ctx->cgid = bpf_get_current_cgroup_id();
+}
+
+static __always_inline int is_protected_cgroup(__u64 cgid) {
+  return TARGET_CGROUP != 0 && cgid == TARGET_CGROUP;
+}
+
+static __always_inline bool is_daemon_process(__u32 pid) {
+  return DAEMON_PID != 0 && pid == DAEMON_PID;
+}
+
+static __always_inline __u64 get_task_cgroup_id(struct task_struct* task) {
+  struct css_set*     css;
+  struct cgroup*      cgrp;
+  struct kernfs_node* kn;
+
+  if (!task) return 0;
+
+  css = BPF_CORE_READ(task, cgroups);
+  if (!css) return 0;
+
+  cgrp = BPF_CORE_READ(css, dfl_cgrp);
+  if (!cgrp) return 0;
+
+  kn = BPF_CORE_READ(cgrp, kn);
+  if (!kn) return 0;
+
+  return BPF_CORE_READ(kn, id);
 }
 
 char _license[] SEC("license") = "GPL";
