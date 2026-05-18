@@ -46,6 +46,14 @@ const volatile __u32 DAEMON_PID    = 0;
 #define KERNFS_DIR 0x0001
 #endif
 
+#ifndef CAP_SETGID
+#define CAP_SETGID 6
+#endif
+
+#ifndef CAP_SETUID
+#define CAP_SETUID 7
+#endif
+
 typedef struct {
   __u32 pid;
   __u64 cgid;
@@ -482,6 +490,64 @@ int BPF_PROG(block_ld_preload_exec, struct linux_binprm* bprm, int ret) {
 
   bpf_printk("exec denied: [reason=LD_PRELOAD] [caller pid=%u cgid=%llu] [protected cgid=%llu]\n",
              caller.pid, caller.cgid, TARGET_CGROUP);
+
+  return -EPERM;
+}
+
+/* capable
+ *
+ * Restricts capability use inside TARGET_CGROUP.
+ *
+ * Allows:
+ * - CAP_SETGID for launcher/runtime group setup.
+ * - CAP_SETUID for launcher/runtime user setup.
+ *
+ * Blocks:
+ * - all other capability-based privilege checks from protected processes.
+ */
+
+SEC("lsm/capable")
+int BPF_PROG(restrict_capable, const struct cred* cred, struct user_namespace* ns, int cap,
+             unsigned int opts, int ret) {
+  if (ret) return ret;
+
+  caller_ctx caller = get_caller_ctx();
+
+  if (is_daemon_process(caller.pid) || !is_protected_cgroup(caller.cgid)) return 0;
+
+switch (cap) {
+  case CAP_SETGID:
+  case CAP_SETUID:
+    return 0;
+}
+
+  bpf_printk("capable denied: [caller pid=%u cgid=%llu cap=%d opts=%u] [protected cgid=%llu]\n",
+             caller.pid, caller.cgid, cap, opts, TARGET_CGROUP);
+  return -EPERM;
+
+  return 0;
+}
+
+/* perf_event_open
+ *
+ * Prevents processes inside TARGET_CGROUP from opening perf events.
+ *
+ * Blocks:
+ * - perf-based profiling/sampling from protected processes
+ * - perf_event_open(2)-based observation/debugging attempts
+ * - hardware/software performance event access from inside the game cgroup
+ */
+
+SEC("lsm/perf_event_open")
+int BPF_PROG(restrict_perf_event_open, int type, int ret) {
+  if (ret) return ret;
+
+  caller_ctx caller = get_caller_ctx();
+
+  if (is_daemon_process(caller.pid)) return 0;
+
+  bpf_printk("perf_event_open denied: [caller pid=%u cgid=%llu type=%d] [protected cgid=%llu]\n",
+             caller.pid, caller.cgid, type, TARGET_CGROUP);
 
   return -EPERM;
 }
