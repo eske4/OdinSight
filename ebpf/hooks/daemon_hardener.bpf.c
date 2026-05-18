@@ -171,7 +171,7 @@ static __always_inline int is_unauthorized_external_actor(struct task_struct *p)
     if (DAEMON_PID == 0) return 0; // Allowed if not initialized
 
     if (BPF_CORE_READ(p, tgid) == DAEMON_PID) {
-        int current_pid = bpf_get_current_pid_tgid() >> 32;
+        __u32 current_pid = bpf_get_current_pid_tgid() >> 32;
 
         if (current_pid == DAEMON_PID || current_pid == 0) {
             return 0; // Allow self and kernel contexts
