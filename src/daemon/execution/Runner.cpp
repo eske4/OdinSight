@@ -108,10 +108,7 @@ Odin::Result<void> Runner::setup(const GameID& game_id) {
   auto [work_fd, disk_exec_fd, absBinPath] = std::move(*paths_res);
 
   FD final_exec_fd = std::move(disk_exec_fd);
-  {
-    // --------------------------------------------------- //
-    // Comment to disable disk to ram ghosting for testing //
-    // --------------------------------------------------- //
+  if (entry->allow_ghost_fd) {
     auto ghost_res = create_sealed_memfd(final_exec_fd);
     if (!ghost_res) { return std::unexpected(Error::Enrich(lctx, "ghosting", ghost_res.error())); }
     ::posix_fadvise(final_exec_fd.get(), 0, 0, POSIX_FADV_DONTNEED);
