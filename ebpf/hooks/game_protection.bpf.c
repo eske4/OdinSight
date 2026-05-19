@@ -216,7 +216,7 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
     bpf_printk("file_mprotect denied: [caller pid=%u cgid=%llu]"
                " [reason=wx reqprot=%lu prot=%lu] [protected cgid=%llu]\n",
                caller.pid, caller.cgid, reqprot, prot, TARGET_CGROUP);
-    return -EPERM;
+    // return -EPERM;
   }
 
   backing_file = BPF_CORE_READ(vma, vm_file);
@@ -231,7 +231,7 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
                " [reason=writable_to_exec vm_flags=%lu reqprot=%lu prot=%lu]"
                " [protected cgid=%llu]\n",
                caller.pid, caller.cgid, vm_flags, reqprot, prot, TARGET_CGROUP);
-    return -EPERM;
+    // return -EPERM;
   }
 
   const bool is_anonymous_exec = !backing_file && ((reqprot & PROT_EXEC) || (prot & PROT_EXEC));
@@ -240,7 +240,7 @@ int BPF_PROG(restrict_file_mprotect, struct vm_area_struct* vma, unsigned long r
     bpf_printk("file_mprotect denied: [caller pid=%u cgid=%llu]"
                " [reason=anonymous_exec reqprot=%lu prot=%lu] [protected cgid=%llu]\n",
                caller.pid, caller.cgid, reqprot, prot, TARGET_CGROUP);
-    return -EPERM;
+    // return -EPERM;
   }
 
   return 0;

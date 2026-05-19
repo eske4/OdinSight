@@ -27,7 +27,8 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         }}},
       {GameID::ASAMU,
        {// 1. Path to binary
-        "~/.local/share/Steam/steamapps/common/A Story About My Uncle/Binaries/linux-amd64/ASAMU",
+        "~/.local/share/Steam/steamapps/common/A Story About My "
+        "Uncle/Binaries/linux-amd64/ASAMU",
 
         // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
         "~/.local/share/Steam/steamapps/common/A Story About My Uncle/Binaries/linux-amd64/",
@@ -43,7 +44,17 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         "~/.local/share/Steam/steamapps/common/SOMA/",
 
         {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/SOMA/lib64"},
-        false}}
+        false}},
+      {GameID::Unigine,
+       {
+           // 1. Path to binary
+           "~/.games/Unigine_Superposition/Superposition",
+
+           // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
+           "~/.games/Unigine_Superposition/",
+
+           {"QT_QPA_PLATFORM=xcb"},
+       }},
 
       // Add games here
   };
