@@ -8,27 +8,28 @@ namespace {
 using OdinSight::Daemon::Launcher::GameEntry;
 using GameID = OdinSight::Common::GameID;
 
-const std::unordered_map<GameID, GameEntry> &getWhitelist() {
+const std::unordered_map<GameID, GameEntry>& getWhitelist() {
   static const std::unordered_map<GameID, GameEntry> whitelist = {
       {GameID::AssaultCube,
-       {"~/.games/AssaultCube_v1.2.0.2/bin_unix/linux_64_client",
-        "~/.games/AssaultCube_v1.2.0.2/"}},
+       {
+           "~/.games/AssaultCube_v1.2.0.2/bin_unix/linux_64_client",
+           "~/.games/AssaultCube_v1.2.0.2/",
+           {} // No custom environment
+       }},
       // Add games here
   };
   return whitelist;
 }
-
 } // namespace
+// namespace
 
 namespace OdinSight::Daemon::Launcher {
 
-std::optional<GameEntry> findGame(const GameID &game_id) {
-  const auto &whitelist = getWhitelist();
+std::optional<GameEntry> findGame(const GameID& game_id) {
+  const auto& whitelist = getWhitelist();
   auto        iterator  = whitelist.find(game_id);
 
-  if (iterator != whitelist.end()) {
-    return iterator->second;
-  }
+  if (iterator != whitelist.end()) { return iterator->second; }
   return std::nullopt;
 }
 

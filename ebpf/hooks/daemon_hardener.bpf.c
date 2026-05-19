@@ -153,7 +153,7 @@ int BPF_PROG(prevent_proc_recon, struct inode *inode, int mask, int ret)
         __u32 caller = bpf_get_current_pid_tgid() >> 32;
         
         if (caller != DAEMON_PID && caller != 0) {
-            bpf_printk("procfs sandbox: Blocked PID %u\n", caller);
+            //bpf_printk("procfs sandbox: Blocked PID %u\n", caller);
             return -EPERM;
         }
     }
