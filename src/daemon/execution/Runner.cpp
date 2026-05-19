@@ -5,6 +5,7 @@
 #include "IdentityService.hpp"
 #include "common/Result.hpp"
 #include "system/FD.hpp"
+#include "utils/FileUtil.hpp"
 #include "utils/StringUtil.hpp"
 
 #include <cstdint>
@@ -95,7 +96,9 @@ Odin::Result<void> Runner::setup(const GameID& game_id) {
 
   auto env_vector = std::move(*env_res);
 
-  for (const auto& env_var : entry->custom_env) { env_vector.push_back(env_var); }
+  for (const auto& env_var : entry->custom_env) {
+    env_vector.push_back(Util::FSUtil::expandToFullPath(env_var, uid_res.value()));
+  }
 
   auto paths_res = resolve_paths(*entry, *uid_res);
   if (!paths_res) {

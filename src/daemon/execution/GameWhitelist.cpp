@@ -17,15 +17,14 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
            {} // No custom environment
        }},
       {GameID::SuperTuxKart,
-       {
-           "~/.games/SuperTuxKart-1.5-linux-x86_64/bin/supertuxkart",
-           "~/.games/SuperTuxKart-1.5-linux-x86_64/",
-           {
-               "SUPERTUXKART_DATADIR=~/.games/SuperTuxKart-1.5-linux-x86_64",
-               "SUPERTUXKART_ASSETS_DIR=~/.games/SuperTuxKart-1.5-linux-x86_64/data/",
-               "LD_LIBRARY_PATH=~/.games/SuperTuxKart-1.5-linux-x86_64/lib:/usr/lib:/usr/lib32:/lib:/lib32",
-           }
-       }},
+       {"~/.games/SuperTuxKart-1.5-linux-x86_64/bin/supertuxkart",
+        "~/.games/SuperTuxKart-1.5-linux-x86_64/",
+        {
+            "SUPERTUXKART_DATADIR=~/.games/SuperTuxKart-1.5-linux-x86_64",
+            "SUPERTUXKART_ASSETS_DIR=~/.games/SuperTuxKart-1.5-linux-x86_64/data/",
+            "LD_LIBRARY_PATH=~/.games/SuperTuxKart-1.5-linux-x86_64/lib:/usr/lib:/usr/lib32:/lib:/"
+            "lib32",
+        }}},
       // Add games here
   };
   return whitelist;
