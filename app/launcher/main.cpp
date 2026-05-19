@@ -11,9 +11,7 @@ namespace common = OdinSight::Common;
 
 int main() {
   auto file_descriptor = sys::FD::adopt(::socket(AF_UNIX, SOCK_STREAM, 0));
-  if (!file_descriptor) {
-    return 1;
-  }
+  if (!file_descriptor) { return 1; }
 
   if (file_descriptor->get() < 0) {
     std::cerr << "[ERROR] Failed to create socket\n";
@@ -35,7 +33,7 @@ int main() {
   socklen_t addrLen = offsetof(struct sockaddr_un, sun_path) + 1 + path.size();
 
   // 2. Attempt to connect
-  if (connect(file_descriptor->get(), reinterpret_cast<sockaddr *>(&addr), addrLen) == -1) {
+  if (connect(file_descriptor->get(), reinterpret_cast<sockaddr*>(&addr), addrLen) == -1) {
     std::cerr << "[ERROR] Could not connect to abstract socket: " << std::strerror(errno) << "\n";
     return 1;
   }

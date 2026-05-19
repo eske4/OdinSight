@@ -93,6 +93,10 @@ Odin::Result<void> Runner::setup(const GameID& game_id) {
   auto env_res = IdentityService::getUserEnvironment(*uid_res);
   if (!env_res) { return std::unexpected(Error::Enrich(lctx, "resolve_env", env_res.error())); }
 
+  auto env_vector = std::move(*env_res);
+
+  for (const auto& env_var : entry->custom_env) { env_vector.push_back(env_var); }
+
   auto paths_res = resolve_paths(*entry, *uid_res);
   if (!paths_res) {
     return std::unexpected(Error::Enrich(lctx, "resolve_paths", paths_res.error()));
@@ -117,7 +121,7 @@ Odin::Result<void> Runner::setup(const GameID& game_id) {
                               .uid            = *uid_res,
                               .gid            = *gid_res,
                               .game_name      = entry->binary.filename().string(),
-                              .envp           = std::move(*env_res),
+                              .envp           = std::move(env_vector),
                               .argv           = {std::move(absBinPath)}});
 
   return {};

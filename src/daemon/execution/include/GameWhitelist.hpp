@@ -3,16 +3,18 @@
 #include "common/GameID.hpp"
 #include <filesystem>
 #include <optional>
+#include <vector>
 
 namespace OdinSight::Daemon::Launcher {
 
 using GameID = OdinSight::Common::GameID;
 
 struct GameEntry {
-  std::filesystem::path binary;
-  std::filesystem::path dataDir;
+  std::filesystem::path    binary;
+  std::filesystem::path    dataDir;
+  std::vector<std::string> custom_env;
 };
 
-[[nodiscard]] std::optional<GameEntry> findGame(const GameID &game_id);
+[[nodiscard]] std::optional<GameEntry> findGame(const GameID& game_id);
 
 } // namespace OdinSight::Daemon::Launcher
