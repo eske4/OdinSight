@@ -12,30 +12,50 @@ namespace sys    = OdinSight::System;
 namespace common = OdinSight::Common;
 
 common::GameID selectGame() {
-  constexpr int numGames  = static_cast<int>(common::GameID::NUM_GAMES);
-  constexpr int lineWidth = 55;
+    constexpr int numGames = static_cast<int>(common::GameID::NUM_GAMES);
 
-  std::cout << std::left << std::setfill('-') << std::setw(lineWidth) << "Game Title "
-            << "Index" << std::setfill(' ') << "\n\n";
+    constexpr int nameWidth = 24;
+    constexpr int indexWidth = 7;
 
-  for (int i = 1; i < numGames; ++i) {
-    auto game = static_cast<common::GameID>(i);
-    auto name = common::gameToString(game);
+    constexpr std::string_view topBorder =
+        "┌─────────────────────────────────┐";
+    constexpr std::string_view middleBorder =
+        "├─────────────────────────────────┤";
+    constexpr std::string_view bottomBorder =
+        "└─────────────────────────────────┘";
 
-    std::string index = "[" + std::to_string(i) + "]";
+    std::cout << topBorder << '\n';
 
-    std::cout << std::left << std::setfill('-') << std::setw(lineWidth) << std::string(name) + " "
-              << index << std::setfill(' ') << "\n";
-  }
+    std::cout << "│ "
+              << std::left  << std::setw(nameWidth)  << std::string_view{"Game Title"}
+              << std::right << std::setw(indexWidth) << std::string_view{"Index"}
+              << " │\n";
 
-  std::cout << "\nEnter Game Index: ";
+    std::cout << middleBorder << '\n';
 
-  int choice = 0;
-  std::cin >> choice;
+    for (int i = 1; i < numGames; ++i) {
+        const auto game = static_cast<common::GameID>(i);
+        const std::string_view name = common::gameToString(game);
+        const std::string index = "[" + std::to_string(i) + "]";
 
-  if (!std::cin || choice <= 0 || choice >= numGames) { return common::GameID::Unknown; }
+        std::cout << "│ "
+                  << std::left  << std::setw(nameWidth)  << name
+                  << std::right << std::setw(indexWidth) << index
+                  << " │\n";
+    }
 
-  return static_cast<common::GameID>(choice);
+    std::cout << bottomBorder << "\n\n";
+
+    std::cout << "Enter Game Index: ";
+
+    int choice = 0;
+    std::cin >> choice;
+
+    if (!std::cin || choice <= 0 || choice >= numGames) {
+        return common::GameID::Unknown;
+    }
+
+    return static_cast<common::GameID>(choice);
 }
 
 int main() {
