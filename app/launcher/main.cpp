@@ -41,7 +41,7 @@ int main() {
   // 3. Prepare and Send Message (with Byte Order conversion)
   common::CommandPacket msg;
   msg.command_id = common::DaemonCommand::Launch;
-  msg.game_id    = common::GameID::AssaultCube;
+  msg.game_id    = common::GameID::SuperTuxKart;
 
   if (send(file_descriptor->get(), &msg, sizeof(msg), 0) == -1) {
     std::cerr << "[ERROR] Failed to send message\n";
