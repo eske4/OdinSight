@@ -13,6 +13,7 @@ struct GameEntry {
   std::filesystem::path    binary;
   std::filesystem::path    dataDir;
   std::vector<std::string> custom_env;
+  bool                     allow_ghost_fd = true;
 };
 
 [[nodiscard]] std::optional<GameEntry> findGame(const GameID& game_id);

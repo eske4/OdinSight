@@ -12,10 +12,29 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
   static const std::unordered_map<GameID, GameEntry> whitelist = {
       {GameID::AssaultCube,
        {
-           "~/.games/AssaultCube_v1.2.0.2/bin_unix/linux_64_client",
-           "~/.games/AssaultCube_v1.2.0.2/",
+           "~/.games/AssaultCube/bin_unix/linux_64_client",
+           "~/.games/AssaultCube/",
            {} // No custom environment
        }},
+      {GameID::SuperTuxKart,
+       {"~/.games/SuperTuxKart/bin/supertuxkart",
+        "~/.games/SuperTuxKart/",
+        {
+            "SUPERTUXKART_DATADIR=~/.games/SuperTuxKart",
+            "SUPERTUXKART_ASSETS_DIR=~/.games/SuperTuxKart/data/",
+            "LD_LIBRARY_PATH=~/.games/SuperTuxKart/lib:/usr/lib:/usr/lib32:/lib:/"
+            "lib32",
+        }}},
+      {GameID::ASAMU,
+       {// 1. Path to binary
+        "~/.local/share/Steam/steamapps/common/A Story About My Uncle/Binaries/linux-amd64/ASAMU",
+
+        // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
+        "~/.local/share/Steam/steamapps/common/A Story About My Uncle/Binaries/linux-amd64/",
+
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/A Story About My "
+         "Uncle/Binaries/linux-amd64/:/usr/lib:/usr/lib32:/lib:/lib32"},
+        false}}
       // Add games here
   };
   return whitelist;
