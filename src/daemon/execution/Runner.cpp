@@ -100,6 +100,9 @@ Odin::Result<void> Runner::setup(const GameID& game_id) {
     env_vector.push_back(Util::FSUtil::expandToFullPath(env_var, uid_res.value()));
   }
 
+  env_vector.push_back("MANGOHUD=1");
+  env_vector.push_back("LD_PRELOAD=/usr/lib/mangohud/libMangoHud_shim.so");
+
   auto paths_res = resolve_paths(*entry, *uid_res);
   if (!paths_res) {
     return std::unexpected(Error::Enrich(lctx, "resolve_paths", paths_res.error()));

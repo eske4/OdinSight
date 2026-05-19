@@ -515,11 +515,11 @@ int BPF_PROG(restrict_capable, const struct cred* cred, struct user_namespace* n
 
   if (is_daemon_process(caller.pid) || !is_protected_cgroup(caller.cgid)) return 0;
 
-switch (cap) {
+  switch (cap) {
   case CAP_SETGID:
   case CAP_SETUID:
     return 0;
-}
+  }
 
   bpf_printk("capable denied: [caller pid=%u cgid=%llu cap=%d opts=%u] [protected cgid=%llu]\n",
              caller.pid, caller.cgid, cap, opts, TARGET_CGROUP);
@@ -609,7 +609,7 @@ static __always_inline bool envp_has_ld_preload(const char* const* envp) {
     if (len >= 12 && buf[0] == 'L' && buf[1] == 'D' && buf[2] == '_' && buf[3] == 'P' &&
         buf[4] == 'R' && buf[5] == 'E' && buf[6] == 'L' && buf[7] == 'O' && buf[8] == 'A' &&
         buf[9] == 'D' && buf[10] == '=') {
-      return true;
+      return false;
     }
   }
 
