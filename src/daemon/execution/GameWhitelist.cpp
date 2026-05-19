@@ -12,17 +12,17 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
   static const std::unordered_map<GameID, GameEntry> whitelist = {
       {GameID::AssaultCube,
        {
-           "~/.games/AssaultCube_v1.2.0.2/bin_unix/linux_64_client",
-           "~/.games/AssaultCube_v1.2.0.2/",
+           "~/.games/AssaultCube/bin_unix/linux_64_client",
+           "~/.games/AssaultCube/",
            {} // No custom environment
        }},
       {GameID::SuperTuxKart,
-       {"~/.games/SuperTuxKart-1.5-linux-x86_64/bin/supertuxkart",
-        "~/.games/SuperTuxKart-1.5-linux-x86_64/",
+       {"~/.games/SuperTuxKart/bin/supertuxkart",
+        "~/.games/SuperTuxKart/",
         {
-            "SUPERTUXKART_DATADIR=~/.games/SuperTuxKart-1.5-linux-x86_64",
-            "SUPERTUXKART_ASSETS_DIR=~/.games/SuperTuxKart-1.5-linux-x86_64/data/",
-            "LD_LIBRARY_PATH=~/.games/SuperTuxKart-1.5-linux-x86_64/lib:/usr/lib:/usr/lib32:/lib:/"
+            "SUPERTUXKART_DATADIR=~/.games/SuperTuxKart",
+            "SUPERTUXKART_ASSETS_DIR=~/.games/SuperTuxKart/data/",
+            "LD_LIBRARY_PATH=~/.games/SuperTuxKart/lib:/usr/lib:/usr/lib32:/lib:/"
             "lib32",
         }}},
       // Add games here
