@@ -85,11 +85,11 @@ Odin::Result<void> Validator::isKernelLockdownEnabled() {
   buffer[bytesRead] = '\0';
   const std::string lockdownStatus(buffer.data());
 
-  bool lockdownEnabled = lockdownStatus.find("[confidentiality]") != std::string::npos;
+  bool lockdownEnabled = lockdownStatus.find("[integrity]") != std::string::npos;
 
   if (!lockdownEnabled) {
     return std::unexpected(Odin::Error::Logic(
-        errorCtx, "check kernel lockdown", "Kernel lockdown confidentiality mode is not enabled"));
+        errorCtx, "check kernel lockdown", "Kernel lockdown integrity mode is not enabled"));
   }
 
   return {};
