@@ -44,7 +44,7 @@ Odin::Result<void> Validator::isSecureBootEnabled() {
 
   std::filesystem::path secureBootFullPath = dirPath / secureBootFileName;
 
-  Odin::Result<FD> secureBootFD = OdinSight::System::FDService::openFile(secureBootFullPath);
+  Odin::Result<FD> secureBootFD = OdinSight::System::FDService::openFile(secureBootFullPath, true);
 
   if (!secureBootFD) { return std::unexpected(secureBootFD.error()); }
 
@@ -70,7 +70,7 @@ Odin::Result<void> Validator::isSecureBootEnabled() {
 Odin::Result<void> Validator::isKernelLockdownEnabled() {
   std::filesystem::path lockdownFilePath = "/sys/kernel/security/lockdown";
 
-  Odin::Result<FD> lockdownFd = OdinSight::System::FDService::openFile(lockdownFilePath);
+  Odin::Result<FD> lockdownFd = OdinSight::System::FDService::openFile(lockdownFilePath, true);
 
   if (!lockdownFd) {
     return std::unexpected(Odin::Error::System(errorCtx, "open kernel lockdown state", errno));
@@ -98,7 +98,7 @@ Odin::Result<void> Validator::isKernelLockdownEnabled() {
 Odin::Result<void> Validator::isKernelModuleSignatureEnforcementEnabled() {
   std::filesystem::path sigEnforceFilePath = "/sys/module/module/parameters/sig_enforce";
 
-  Odin::Result<FD> sigFileFD = OdinSight::System::FDService::openFile(sigEnforceFilePath);
+  Odin::Result<FD> sigFileFD = OdinSight::System::FDService::openFile(sigEnforceFilePath, true);
 
   if (!sigFileFD) {
     return std::unexpected(
