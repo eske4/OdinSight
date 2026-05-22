@@ -14,7 +14,8 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
        {
            "~/.games/AssaultCube/bin_unix/linux_64_client",
            "~/.games/AssaultCube/",
-           {} // No custom environment
+           {"LD_PRELOAD=~/Documents/git/ac_rhack/target/release/libac_rhack.so"}
+           // No custom environment
        }},
       {GameID::SuperTuxKart,
        {"~/.games/SuperTuxKart/bin/supertuxkart",
@@ -34,7 +35,17 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
 
         {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/A Story About My "
          "Uncle/Binaries/linux-amd64/:/usr/lib:/usr/lib32:/lib:/lib32"},
-        false}}
+        false}},
+      {GameID::BG3,
+       {// 1. Path to binary
+        "~/.local/share/Steam/steamapps/common/Baldurs Gate 3/bin/bg3",
+
+        // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
+        "~/.local/share/Steam/steamapps/common/Baldurs Gate 3/",
+
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Baldurs Gate 3/bin/"},
+        false}},
+
       // Add games here
   };
   return whitelist;
