@@ -14,7 +14,7 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
        {
            "~/.games/AssaultCube/bin_unix/linux_64_client",
            "~/.games/AssaultCube/",
-           {"LD_PRELOAD=~/Documents/git/ac_rhack/target/release/libac_rhack.so"}
+           {/*"LD_PRELOAD=~/Documents/git/ac_rhack/target/release/libac_rhack.so"*/}
            // No custom environment
        }},
       {GameID::SuperTuxKart,
