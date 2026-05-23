@@ -11,12 +11,9 @@ using GameID = OdinSight::Common::GameID;
 const std::unordered_map<GameID, GameEntry>& getWhitelist() {
   static const std::unordered_map<GameID, GameEntry> whitelist = {
       {GameID::AssaultCube,
-       {
-           "~/.games/AssaultCube/bin_unix/linux_64_client",
-           "~/.games/AssaultCube/",
-           {/*"LD_PRELOAD=~/Documents/git/ac_rhack/target/release/libac_rhack.so"*/}
-           // No custom environment
-       }},
+       {"~/.games/AssaultCube/bin_unix/linux_64_client",
+        "~/.games/AssaultCube/",
+        {/*"LD_PRELOAD=~/Documents/git/ac_rhack/target/release/libac_rhack.so"*/}}},
       {GameID::SuperTuxKart,
        {"~/.games/SuperTuxKart/bin/supertuxkart",
         "~/.games/SuperTuxKart/",
@@ -44,6 +41,27 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         "~/.local/share/Steam/steamapps/common/Baldurs Gate 3/",
 
         {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Baldurs Gate 3/bin/"},
+        false}},
+
+      {GameID::Valheim,
+       {// 1. Path to binary
+        "~/.local/share/Steam/steamapps/common/Valheim/valheim.x86_64",
+
+        // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
+        "~/.local/share/Steam/steamapps/common/Valheim/",
+
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Valheim/valheim_Data/Plugins/:~/"
+         ".local/share/Steam/steamapps/common/Valheim/"},
+        false}},
+
+      {GameID::Unturned,
+       {// 1. Path to binary
+        "~/.local/share/Steam/steamapps/common/Unturned/Unturned.x86_64",
+
+        // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
+        "~/.local/share/Steam/steamapps/common/Unturned/",
+
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Unturned/:~/"},
         false}},
 
       // Add games here

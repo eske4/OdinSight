@@ -5,7 +5,16 @@
 
 namespace OdinSight::Common {
 
-enum class GameID : uint32_t { Unknown = 0, AssaultCube, SuperTuxKart, ASAMU, BG3, NUM_GAMES };
+enum class GameID : uint32_t {
+  Unknown = 0,
+  AssaultCube,
+  SuperTuxKart,
+  ASAMU,
+  BG3,
+  Valheim,
+  Unturned,
+  NUM_GAMES
+};
 
 inline std::string_view gameToString(GameID game) {
   switch (game) {
@@ -17,6 +26,10 @@ inline std::string_view gameToString(GameID game) {
     return "A Story About My Uncle";
   case GameID::BG3:
     return "Baldur's Gate 3";
+  case GameID::Valheim:
+    return "Valheim";
+  case GameID::Unturned:
+    return "Unturned";
   default:
     return "INVALID";
   }
