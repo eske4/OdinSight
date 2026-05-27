@@ -40,7 +40,8 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
         "~/.local/share/Steam/steamapps/common/Baldurs Gate 3/",
 
-        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Baldurs Gate 3/bin/"},
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Baldurs Gate "
+         "3/bin/:/lib32:/usr/lib32:"},
         false}},
 
       {GameID::Valheim,
@@ -50,8 +51,8 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
         "~/.local/share/Steam/steamapps/common/Valheim/",
 
-        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Valheim/valheim_Data/Plugins/:~/"
-         ".local/share/Steam/steamapps/common/Valheim/"},
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Valheim/",
+         "~/.local/share/Steam/steamapps/common/Valheim/valheim_Data/Plugins/"},
         false}},
 
       {GameID::Unturned,
@@ -61,7 +62,8 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
         "~/.local/share/Steam/steamapps/common/Unturned/",
 
-        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Unturned/:~/"},
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Unturned/",
+         "~/.local/share/Steam/steamapps/common/Unturned/Unturned_Data/Plugins/"},
         false}},
 
       // Add games here
