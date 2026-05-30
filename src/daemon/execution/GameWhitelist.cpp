@@ -36,6 +36,16 @@ const std::unordered_map<GameID, GameEntry>& getWhitelist() {
         {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/A Story About My "
          "Uncle/Binaries/linux-amd64/:/usr/lib:/usr/lib32:/lib:/lib32"},
         false}},
+      {GameID::BG3,
+       {// 1. Path to binary
+        "~/.local/share/Steam/steamapps/common/Baldurs Gate 3/bin/bg3",
+
+        // 2. WORKING DIRECTORY: Must be set here so ../../ hits the root folder correctly!
+        "~/.local/share/Steam/steamapps/common/Baldurs Gate 3/",
+
+        {"LD_LIBRARY_PATH=~/.local/share/Steam/steamapps/common/Baldurs Gate "
+         "3/bin/:/lib32:/usr/lib32:"},
+        false}},
       {GameID::Soma,
        {// 1. Path to binary
         "~/.local/share/Steam/steamapps/common/SOMA/Soma_NoSteam.bin.x86_64",

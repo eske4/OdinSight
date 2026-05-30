@@ -10,6 +10,7 @@ enum class GameID : uint32_t {
   AssaultCube,
   SuperTuxKart,
   ASAMU,
+  BG3,
   Soma,
   Unigine,
   NUM_GAMES
@@ -25,6 +26,8 @@ inline std::string_view gameToString(GameID game) {
     return "A Story About My Uncle";
   case GameID::Soma:
     return "Soma";
+  case GameID::BG3:
+    return "Baldur's Gate 3";
   case GameID::Unigine:
     return "Unigine";
   default:
