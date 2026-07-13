@@ -55,7 +55,7 @@ make build
 ```
 
 ### Configuration
-At your home folder (`~`), create a `.games` directory. Add the required games (such as those listed in the [Supported Games & Compatibility](#supported-games--compatibility) table). Other games should be installed via Steam with the specific version written in the [Supported Games & Compatibility](#supported-games--compatibility) table.
+At your home folder (`~`), create a `.games` directory. Add the required games with the specific folder names (AssaultCube, SuperTuxKart, and optionally Unigine_Superposition if you want to perform benchmarks; they must follow the versions listed in the [Supported Games & Compatibility](#supported-games--compatibility) table). Other games should be installed via Steam with the specific version written in the [Supported Games & Compatibility](#supported-games--compatibility) table.
 
 ### Running the Anti-Cheat
 
