@@ -33,9 +33,6 @@ OdinSight requires a secure host environment to function correctly. The daemon p
 | Unturned | 3.26.3.2 | ❌ Doesn't Work |
 | Unigine Superposition | 1.1 | 🧪 Testing |
 
-For benchmarking
-Unigine Superposition 1.1
-
 ## Installation & Usage
 
 ### Setup
