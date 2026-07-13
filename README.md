@@ -39,7 +39,7 @@ At your home folder (`~`), create a `.games` directory. Add the required games (
    ```
 2. **Request Launch**:
    ```bash
-   sudo ./OdinSight_launcher <path_to_game>
+   sudo ./OdinSight_launcher
    ```
 
 ## Features
