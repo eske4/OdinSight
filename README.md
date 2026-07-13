@@ -2,7 +2,7 @@
 
 OdinSight is an eBPF-based client-side anti-cheat prototype for Linux. It addresses the limitations of traditional runtime-only monitoring by establishing security policies before a game launches and maintaining them throughout the entire process lifecycle.
 
-Developed as a 10th-semester Computer Science project at Aalborg University (Group CS-IT10), OdinSight leverages eBPF, LSM hooks, and CGroups to provide active policy enforcement and kernel integrity validation. It is a continuation of the [TyrSecure project](https://github.com/eske4/TyrSecure).
+Developed as a 10th-semester Master’s project in Computer Science at Aalborg University (Group CS-IT10), OdinSight serves as the culmination of our specialization in security. This project is a direct evolution of the [TyrSecure project](https://github.com/eske4/TyrSecure), refining its core concepts into a more robust and specialized architecture. By leveraging eBPF, LSM hooks, and CGroups, OdinSight provides active policy enforcement and kernel integrity validation.
 
 ## Architecture
 
@@ -32,6 +32,20 @@ OdinSight requires a secure host environment to function correctly. The daemon p
 | Valheim | 1.0.221.12 | ❌ Doesn't Work |
 | Unturned | 3.26.3.2 | ❌ Doesn't Work |
 | Unigine Superposition | 1.1 | 🧪 Testing |
+
+## Dependencies
+
+To build and run OdinSight, your system must have the following dependencies installed. These versions were confirmed to work during development:
+
+| Component | Dependency | Verified Version |
+| :--- | :--- | :--- |
+| **Compiler** | `clang` | 22.1.8 |
+| **Compiler** | `llvm` | 22.1.8 |
+| **Build Tool** | `make` | 4.4.1 |
+| **Headers** | `linux-headers` | 7.1.3-arch1-2 |
+| **Library** | `libbpf` | 1.7 |
+| **Tooling** | `bpftool` | 7.7.0 |
+| **Utility** | `git` | 2.55.0 |
 
 ## Installation & Usage
 
