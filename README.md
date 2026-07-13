@@ -13,7 +13,7 @@ OdinSight utilizes a dual-component design to ensure protection:
 
 ## System Requirements & Integrity
 
-OdinSight requires a secure host environment to function correctly. Before startup, the daemon performs a Kernel Integrity Validation to ensure the following are enabled:
+OdinSight requires a secure host environment to function correctly. The daemon performs a Kernel Integrity Validation to ensure the following are enabled:
 
 * Secure Boot
 * Kernel Lockdown
