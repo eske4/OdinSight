@@ -39,9 +39,11 @@ To build and run OdinSight, your system must have the following dependencies ins
 
 | Component | Dependency | Verified Version |
 | :--- | :--- | :--- |
-| **Compiler** | `clang` | 22.1.8 |
-| **Compiler** | `llvm` | 22.1.8 |
-| **Build Tool** | `make` | 4.4.1 |
+| **Compiler** | `Clang` | 22.1.8 |
+| **Compiler** | `LLVM` | 22.1.8 |
+| **Build System** | `GNU Make` | 4.4.1 |
+| **Build System** | `CMake` | 4.4.0 |
+| **Build Tools** | `pkg-config` | 2.5.1 |
 | **Headers** | `linux-headers` | 7.1.3-arch1-2 |
 | **Library** | `libbpf` | 1.7 |
 | **Tooling** | `bpftool` | 7.7.0 |
