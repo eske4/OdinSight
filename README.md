@@ -2,7 +2,7 @@
 
 OdinSight is an eBPF-based client-side anti-cheat prototype for Linux. It addresses the limitations of traditional runtime-only monitoring by establishing security policies before a game launches and maintaining them throughout the entire process lifecycle.
 
-Developed as a 10th-semester Master’s project in Computer Science at Aalborg University (Group CS-IT10), OdinSight serves as the culmination of our specialization in security. This project is a direct evolution of the [TyrSecure project](https://github.com/eske4/TyrSecure), refining its core concepts into a more robust and specialized architecture. By leveraging eBPF, LSM hooks, and CGroups, OdinSight provides active policy enforcement and kernel integrity validation.
+It is the final project for our Master’s in Computer Science at Aalborg University (Group CS-IT10). It’s the next iteration of the [TyrSecure project](https://github.com/eske4/TyrSecure). We took what we learned there and redesigned it into a much more specialized tool. The system leverages eBPF, LSM hooks, and CGroups to actively enforce security policies and validate kernel integrity throughout a game's lifecycle.
 
 ## Architecture
 
