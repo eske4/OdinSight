@@ -21,6 +21,21 @@ OdinSight requires a secure host environment to function correctly. The daemon p
 
 > Note: If these integrity mechanisms are disabled, OdinSight will refuse to initialize, as the kernel environment cannot be considered sufficiently trusted.
 
+## Supported Games & Compatibility
+
+| Game | Version | Status |
+| :--- | :--- | :--- |
+| AssaultCube | 1.2.0.2 | ✅ Works |
+| SuperTuxKart | 1.5 | ✅ Works |
+| A Story About My Uncle | BUILD V. 5188 | ✅ Works |
+| Baldur's Gate 3 | 4.1.1.7209685 | ⚠️ Partially Works |
+| Valheim | 1.0.221.12 | ❌ Doesn't Work |
+| Unturned | 3.26.3.2 | ❌ Doesn't Work |
+| Unigine Superposition | 1.1 | 🧪 Testing |
+
+For benchmarking
+Unigine Superposition 1.1
+
 ## Installation & Usage
 
 ### Setup
@@ -29,7 +44,7 @@ make build
 ```
 
 ### Configuration
-At your home folder (`~`), create a `.games` directory. Add the required games (AssaultCube, SuperTuxKart, and Unigine_Superposition) with the specific versions listed in the project documentation. Other games should be installed via Steam.
+At your home folder (`~`), create a `.games` directory. Add the required games (such as those listed in the [Supported Games & Compatibility](#supported-games--compatibility) table). Other games should be installed via Steam with the specific version written in the [Supported Games & Compatibility](#supported-games--compatibility) table.
 
 ### Running the Anti-Cheat
 
