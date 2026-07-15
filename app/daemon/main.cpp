@@ -15,7 +15,7 @@ int main() {
   Odin::Result<void> isEnvValid = EnvironmentValidator::isValid();
 
   if (!isEnvValid) {
-    // return EXIT_FAILURE;
+    return EXIT_FAILURE;
   }
 
   auto cg_res = CGroup::create("OdinSight");
